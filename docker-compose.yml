@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app1:
     build: ./fastAPI/app1
@@ -44,9 +42,9 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONPATH=/app
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./pim.db}
     healthcheck:
