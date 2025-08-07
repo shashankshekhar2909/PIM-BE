@@ -9,4 +9,6 @@ alembic
 pydantic-settings
 supabase
 python-dotenv
-requests 
+requests
+pandas
+openpyxl 
