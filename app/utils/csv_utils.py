@@ -36,12 +36,12 @@ def parse_product_csv(file: UploadFile) -> List[Dict[str, Any]]:
                 
                 # Parse product data
                 product_data = {
-                    'sku_id': row['sku_id'].strip(),
-                    'dynamic_fields': {}
+                    'sku_id': row['sku_id'].strip() if row['sku_id'] else '',
+                    'additional_data': []
                 }
                 
                 # Parse optional fields
-                if row.get('category_id'):
+                if row.get('category_id') and row['category_id'].strip():
                     try:
                         product_data['category_id'] = int(row['category_id'])
                     except ValueError:
@@ -50,7 +50,7 @@ def parse_product_csv(file: UploadFile) -> List[Dict[str, Any]]:
                             detail=f"Row {row_num}: category_id must be an integer"
                         )
                 
-                if row.get('price'):
+                if row.get('price') and row['price'].strip():
                     try:
                         product_data['price'] = float(row['price'])
                     except ValueError:
@@ -59,20 +59,25 @@ def parse_product_csv(file: UploadFile) -> List[Dict[str, Any]]:
                             detail=f"Row {row_num}: price must be a number"
                         )
                 
-                if row.get('manufacturer'):
+                if row.get('manufacturer') and row['manufacturer'].strip():
                     product_data['manufacturer'] = row['manufacturer'].strip()
                 
-                if row.get('supplier'):
+                if row.get('supplier') and row['supplier'].strip():
                     product_data['supplier'] = row['supplier'].strip()
                 
-                if row.get('image_url'):
+                if row.get('image_url') and row['image_url'].strip():
                     product_data['image_url'] = row['image_url'].strip()
                 
-                # Parse dynamic fields (any column not in standard fields)
+                # Parse additional fields (any column not in standard fields)
                 standard_fields = {'sku_id', 'category_id', 'price', 'manufacturer', 'supplier', 'image_url'}
                 for field, value in row.items():
-                    if field not in standard_fields and value.strip():
-                        product_data['dynamic_fields'][field] = value.strip()
+                    if field not in standard_fields and value and value.strip():
+                        product_data['additional_data'].append({
+                            'field_name': field,
+                            'field_label': field.replace('_', ' ').title(),
+                            'field_value': value.strip(),
+                            'field_type': 'string'
+                        })
                 
                 products.append(product_data)
                 

@@ -7,6 +7,41 @@ from typing import List
 
 router = APIRouter()
 
+@router.post("")
+def create_tenant(
+    company_name: str = Body(...),
+    logo_url: str = Body(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new tenant. Only admin users can create tenants."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can create tenants")
+    
+    # Check if user already has a tenant
+    if current_user.tenant_id:
+        raise HTTPException(status_code=400, detail="User already has a tenant")
+    
+    # Create new tenant
+    tenant = Tenant(
+        company_name=company_name,
+        logo_url=logo_url
+    )
+    db.add(tenant)
+    db.flush()
+    
+    # Update current user's tenant_id
+    current_user.tenant_id = tenant.id
+    db.commit()
+    db.refresh(tenant)
+    
+    return {
+        "id": tenant.id,
+        "company_name": tenant.company_name,
+        "logo_url": tenant.logo_url,
+        "created_at": tenant.created_at
+    }
+
 @router.get("")
 def list_tenants(
     db: Session = Depends(get_db),

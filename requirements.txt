@@ -6,4 +6,7 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 alembic
-pydantic-settings 
+pydantic-settings
+supabase
+python-dotenv
+requests 
