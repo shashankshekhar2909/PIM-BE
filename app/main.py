@@ -18,6 +18,29 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api/v1")
 
+@app.get("/health")
+def health_check():
+    """
+    Health check endpoint for Docker and monitoring.
+    """
+    return {
+        "status": "healthy",
+        "service": "Multi-Tenant PIM System",
+        "version": "1.0.0"
+    }
+
+@app.get("/")
+def root():
+    """
+    Root endpoint with basic information.
+    """
+    return {
+        "message": "Multi-Tenant PIM System API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
 @app.on_event("startup")
 def on_startup():
     init_db() 

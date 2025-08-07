@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  pim-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./pim.db}
+    volumes:
+      - ./pim.db:/app/pim.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Add a database service if you want to use PostgreSQL
+  # postgres:
+  #   image: postgres:15
+  #   environment:
+  #     POSTGRES_DB: pim
+  #     POSTGRES_USER: pim_user
+  #     POSTGRES_PASSWORD: pim_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   postgres_data: 
