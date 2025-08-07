@@ -60,8 +60,8 @@ print_status "Found docker-compose.yml in: $COMPOSE_DIR"
 # Function to run docker-compose commands
 run_compose() {
     local cmd="$1"
-    print_status "Running: docker-compose $cmd (from $COMPOSE_DIR)"
-    cd "$COMPOSE_DIR" && docker-compose $cmd
+    print_status "Running: docker compose $cmd (from $COMPOSE_DIR)"
+    cd "$COMPOSE_DIR" && docker compose $cmd
     local exit_code=$?
     cd "$SCRIPT_DIR"
     return $exit_code
@@ -109,12 +109,14 @@ show_help() {
     echo "  health         Check PIM service health"
     echo "  shell          Enter PIM container shell"
     echo "  clean          Remove orphan containers"
+    echo "  check-orphans  Check and clean orphan containers"
     echo "  help           Show this help"
     echo ""
     echo "Examples:"
     echo "  $0 up-pim      # Start only PIM service"
     echo "  $0 logs-pim    # View PIM logs"
     echo "  $0 health      # Check PIM health"
+    echo "  $0 clean       # Remove orphan containers"
     echo ""
 }
 
@@ -151,6 +153,17 @@ clean_orphans() {
     print_status "Removing orphan containers..."
     run_compose "down --remove-orphans"
     print_status "Orphan containers removed"
+}
+
+# Function to check and clean orphan containers if needed
+check_orphans() {
+    print_status "Checking for orphan containers..."
+    if docker ps -a --filter "label=com.docker.compose.project" | grep -q "nginx"; then
+        print_warning "Found orphan containers (nginx). Cleaning up..."
+        clean_orphans
+    else
+        print_status "No orphan containers found"
+    fi
 }
 
 # Main script logic
@@ -213,6 +226,10 @@ case "${1:-help}" in
     "clean")
         print_header "Cleaning Orphan Containers"
         clean_orphans
+        ;;
+    "check-orphans")
+        print_header "Checking and Cleaning Orphan Containers"
+        check_orphans
         ;;
     "help"|*)
         show_help

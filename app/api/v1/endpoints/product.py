@@ -284,17 +284,17 @@ def list_products(
     primary_only: bool = False,
     secondary_only: bool = False,
     field_type: str = None,  # "primary", "secondary", "all", or None for all
-    # Field-specific search parameters
+    # Field-specific search parameters (support comma-separated values)
     sku_id: str = None,
     price: float = None,
     price_min: float = None,
     price_max: float = None,
-    manufacturer: str = None,
-    supplier: str = None,
-    brand: str = None,
+    manufacturer: str = None,  # Comma-separated values: "Adidas,Apple,Bosch"
+    supplier: str = None,      # Comma-separated values: "Supplier1,Supplier2"
+    brand: str = None,         # Comma-separated values: "Brand1,Brand2"
     # Dynamic field search (for additional data fields)
     field_name: str = None,
-    field_value: str = None
+    field_value: str = None    # Comma-separated values: "Value1,Value2"
 ):
     """
     List products for the current user's tenant.
@@ -308,15 +308,15 @@ def list_products(
         primary_only: If true, only return products with primary fields (deprecated, use field_type="primary")
         secondary_only: If true, only return products with secondary fields (deprecated, use field_type="secondary")
         field_type: Filter by field type - "primary", "secondary", "all", or None for all fields
-        sku_id: Search in SKU ID field
+        sku_id: Search in SKU ID field (comma-separated values supported)
         price: Search by exact price
         price_min: Minimum price filter
         price_max: Maximum price filter
-        manufacturer: Search in manufacturer field
-        supplier: Search in supplier field
-        brand: Search in brand field (additional data)
+        manufacturer: Search in manufacturer field (comma-separated values: "Adidas,Apple,Bosch")
+        supplier: Search in supplier field (comma-separated values: "Supplier1,Supplier2")
+        brand: Search in brand field (comma-separated values: "Brand1,Brand2")
         field_name: Search in specific additional data field
-        field_value: Value to search for in the specified field
+        field_value: Value to search for in the specified field (comma-separated values: "Value1,Value2")
     """
     # Validate field_type parameter
     if field_type and field_type.lower() not in ["primary", "secondary", "all"]:
@@ -339,18 +339,37 @@ def list_products(
     
     searchable_fields = [config.field_name for config in searchable_configs]
     
-    # Build search conditions
+    # Build search conditions - use AND logic for multiple filters
     search_conditions = []
     
-    # Field-specific search conditions
+    # Helper function to handle comma-separated values
+    def split_comma_values(value):
+        """Split comma-separated values and return list of trimmed values"""
+        if not value:
+            return []
+        return [v.strip() for v in value.split(',') if v.strip()]
+    
+    # Field-specific search conditions with support for multiple values
     if sku_id and 'sku_id' in searchable_fields:
-        search_conditions.append(Product.sku_id.ilike(f"%{sku_id}%"))
+        sku_values = split_comma_values(sku_id)
+        if sku_values:
+            sku_conditions = [Product.sku_id.ilike(f"%{val}%") for val in sku_values]
+            from sqlalchemy import or_
+            search_conditions.append(or_(*sku_conditions))
     
     if manufacturer and 'manufacturer' in searchable_fields:
-        search_conditions.append(Product.manufacturer.ilike(f"%{manufacturer}%"))
+        manufacturer_values = split_comma_values(manufacturer)
+        if manufacturer_values:
+            manufacturer_conditions = [Product.manufacturer.ilike(f"%{val}%") for val in manufacturer_values]
+            from sqlalchemy import or_
+            search_conditions.append(or_(*manufacturer_conditions))
     
     if supplier and 'supplier' in searchable_fields:
-        search_conditions.append(Product.supplier.ilike(f"%{supplier}%"))
+        supplier_values = split_comma_values(supplier)
+        if supplier_values:
+            supplier_conditions = [Product.supplier.ilike(f"%{val}%") for val in supplier_values]
+            from sqlalchemy import or_
+            search_conditions.append(or_(*supplier_conditions))
     
     # Price filtering
     if price is not None and 'price' in searchable_fields:
@@ -362,51 +381,67 @@ def list_products(
     if price_max is not None and 'price' in searchable_fields:
         search_conditions.append(Product.price <= price_max)
     
-    # Brand search (additional data field)
+    # Brand search (additional data field) - support multiple values
     if brand and 'brand' in searchable_fields:
-        brand_query = db.query(ProductAdditionalData.product_id).filter(
-            ProductAdditionalData.field_name == 'brand',
-            ProductAdditionalData.field_value.ilike(f"%{brand}%")
-        ).distinct()
-        brand_product_ids = [row[0] for row in brand_query.all()]
-        if brand_product_ids:
-            search_conditions.append(Product.id.in_(brand_product_ids))
+        brand_values = split_comma_values(brand)
+        if brand_values:
+            brand_conditions = []
+            for brand_val in brand_values:
+                brand_query = db.query(ProductAdditionalData.product_id).filter(
+                    ProductAdditionalData.field_name == 'brand',
+                    ProductAdditionalData.field_value.ilike(f"%{brand_val}%")
+                ).distinct()
+                brand_product_ids = [row[0] for row in brand_query.all()]
+                if brand_product_ids:
+                    brand_conditions.extend(brand_product_ids)
+            
+            if brand_conditions:
+                search_conditions.append(Product.id.in_(brand_conditions))
     
-    # Dynamic field search
+    # Dynamic field search - support multiple values
     if field_name and field_value and field_name in searchable_fields:
-        dynamic_query = db.query(ProductAdditionalData.product_id).filter(
-            ProductAdditionalData.field_name == field_name,
-            ProductAdditionalData.field_value.ilike(f"%{field_value}%")
-        ).distinct()
-        dynamic_product_ids = [row[0] for row in dynamic_query.all()]
-        if dynamic_product_ids:
-            search_conditions.append(Product.id.in_(dynamic_product_ids))
+        field_values = split_comma_values(field_value)
+        if field_values:
+            field_conditions = []
+            for field_val in field_values:
+                dynamic_query = db.query(ProductAdditionalData.product_id).filter(
+                    ProductAdditionalData.field_name == field_name,
+                    ProductAdditionalData.field_value.ilike(f"%{field_val}%")
+                ).distinct()
+                dynamic_product_ids = [row[0] for row in dynamic_query.all()]
+                if dynamic_product_ids:
+                    field_conditions.extend(dynamic_product_ids)
+            
+            if field_conditions:
+                search_conditions.append(Product.id.in_(field_conditions))
     
     # General search query (if no field-specific searches)
     if search and not any([sku_id, manufacturer, supplier, brand, field_name, price, price_min, price_max]):
         search_term = f"%{search}%"
         
         # Search in standard fields if they're searchable
+        general_search_conditions = []
+        
         if 'sku_id' in searchable_fields:
-            search_conditions.append(Product.sku_id.ilike(search_term))
+            general_search_conditions.append(Product.sku_id.ilike(search_term))
         if 'price' in searchable_fields:
             # Handle numeric search for price
             try:
                 price_value = float(search)
-                search_conditions.append(Product.price == price_value)
+                general_search_conditions.append(Product.price == price_value)
             except ValueError:
                 # If not a number, search as string
-                search_conditions.append(Product.price.cast(String).ilike(search_term))
+                general_search_conditions.append(Product.price.cast(String).ilike(search_term))
         if 'manufacturer' in searchable_fields:
-            search_conditions.append(Product.manufacturer.ilike(search_term))
+            general_search_conditions.append(Product.manufacturer.ilike(search_term))
         if 'supplier' in searchable_fields:
-            search_conditions.append(Product.supplier.ilike(search_term))
+            general_search_conditions.append(Product.supplier.ilike(search_term))
         if 'image_url' in searchable_fields:
-            search_conditions.append(Product.image_url.ilike(search_term))
+            general_search_conditions.append(Product.image_url.ilike(search_term))
         if 'category_id' in searchable_fields:
             try:
                 category_value = int(search)
-                search_conditions.append(Product.category_id == category_value)
+                general_search_conditions.append(Product.category_id == category_value)
             except ValueError:
                 # If not a number, skip category search
                 pass
@@ -421,12 +456,17 @@ def list_products(
             
             product_ids_with_matching_data = [row[0] for row in additional_data_query.all()]
             if product_ids_with_matching_data:
-                search_conditions.append(Product.id.in_(product_ids_with_matching_data))
+                general_search_conditions.append(Product.id.in_(product_ids_with_matching_data))
+        
+        # For general search, use OR logic within the search term
+        if general_search_conditions:
+            from sqlalchemy import or_
+            search_conditions.append(or_(*general_search_conditions))
     
-    # Apply search conditions
+    # Apply search conditions using AND logic for multiple filters
     if search_conditions:
-        from sqlalchemy import or_
-        query = query.filter(or_(*search_conditions))
+        from sqlalchemy import and_
+        query = query.filter(and_(*search_conditions))
     
     # Apply field type filtering
     if field_type or primary_only or secondary_only:
