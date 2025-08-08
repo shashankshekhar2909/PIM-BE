@@ -663,13 +663,49 @@ The system supports both local and Supabase authentication:
   "progress_percentage": 60,
   "steps": [
     {
-      "step_key": "company_setup",
-      "title": "Company Setup",
-      "description": "Basic company information",
+      "step_key": "company_info",
+      "title": "Company Info",
+      "description": "Basic information",
       "is_completed": true,
       "order": 1,
       "category": "setup",
       "icon": "🏢"
+    },
+    {
+      "step_key": "csv_upload",
+      "title": "CSV Upload & Validation",
+      "description": "Product data",
+      "is_completed": true,
+      "order": 2,
+      "category": "data",
+      "icon": "📊"
+    },
+    {
+      "step_key": "field_setup",
+      "title": "Field Setup",
+      "description": "Configure fields",
+      "is_completed": false,
+      "order": 3,
+      "category": "configuration",
+      "icon": "⚙️"
+    },
+    {
+      "step_key": "preview",
+      "title": "Preview",
+      "description": "Sample SKU",
+      "is_completed": false,
+      "order": 4,
+      "category": "review",
+      "icon": "👁️"
+    },
+    {
+      "step_key": "complete",
+      "title": "Complete",
+      "description": "Finish setup",
+      "is_completed": false,
+      "order": 5,
+      "category": "completion",
+      "icon": "✅"
     }
   ],
   "is_system_user": false
@@ -685,7 +721,7 @@ The system supports both local and Supabase authentication:
 **Request Body:**
 ```json
 {
-  "company_name": "My Company",          // For company_setup step
+  "company_name": "My Company",          // For company_info step
   "logo_url": "https://example.com/logo.png"  // Optional
 }
 ```

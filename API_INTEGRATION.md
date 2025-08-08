@@ -523,9 +523,9 @@ curl -X GET "http://localhost:8000/api/v1/progress/steps" \
   "tenant_id": 1,
   "steps": [
     {
-      "step_key": "company_setup",
-      "title": "Company Setup",
-      "description": "Basic company information and branding",
+      "step_key": "company_info",
+      "title": "Company Info",
+      "description": "Basic information",
       "order": 1,
       "is_required": true,
       "category": "setup",
@@ -537,16 +537,68 @@ curl -X GET "http://localhost:8000/api/v1/progress/steps" \
         "company_name": "Acme Inc",
         "logo_url": "https://example.com/logo.png"
       }
+    },
+    {
+      "step_key": "csv_upload",
+      "title": "CSV Upload & Validation",
+      "description": "Product data",
+      "order": 2,
+      "is_required": true,
+      "category": "data",
+      "icon": "📊",
+      "estimated_time": 10,
+      "is_completed": false,
+      "completed_at": null,
+      "data": {}
+    },
+    {
+      "step_key": "field_setup",
+      "title": "Field Setup",
+      "description": "Configure fields",
+      "order": 3,
+      "is_required": true,
+      "category": "configuration",
+      "icon": "⚙️",
+      "estimated_time": 8,
+      "is_completed": false,
+      "completed_at": null,
+      "data": {}
+    },
+    {
+      "step_key": "preview",
+      "title": "Preview",
+      "description": "Sample SKU",
+      "order": 4,
+      "is_required": true,
+      "category": "review",
+      "icon": "👁️",
+      "estimated_time": 3,
+      "is_completed": false,
+      "completed_at": null,
+      "data": {}
+    },
+    {
+      "step_key": "complete",
+      "title": "Complete",
+      "description": "Finish setup",
+      "order": 5,
+      "is_required": true,
+      "category": "completion",
+      "icon": "✅",
+      "estimated_time": 2,
+      "is_completed": false,
+      "completed_at": null,
+      "data": {}
     }
   ],
-  "total_steps": 6,
+  "total_steps": 5,
   "completed_steps": 1,
-  "progress_percentage": 16.7
+  "progress_percentage": 20
 }
 ```
 
-#### POST /api/v1/progress/steps/company_setup/complete
-**Complete company setup during onboarding**
+#### POST /api/v1/progress/steps/company_info/complete
+**Complete company info step during onboarding**
 
 Supports direct URL pasting for logo:
 - Accepts any valid URL pointing to an image
@@ -554,11 +606,11 @@ Supports direct URL pasting for logo:
 - Also accepts URLs with image-related keywords in the path
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/progress/steps/company_setup/complete" \
+curl -X POST "http://localhost:8000/api/v1/progress/steps/company_info/complete" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -d '{
-    "company_name": "My Company",
+    "company_name": "Acme Inc",
     "logo_url": "https://example.com/logo.png"
   }'
 ```
@@ -566,11 +618,11 @@ curl -X POST "http://localhost:8000/api/v1/progress/steps/company_setup/complete
 **Response:**
 ```json
 {
-  "step_key": "company_setup",
+  "step_key": "company_info",
   "is_completed": true,
   "completed_at": "2024-01-15T10:30:00Z",
   "data": {
-    "company_name": "My Company",
+    "company_name": "Acme Inc",
     "logo_url": "https://example.com/logo.png"
   }
 }

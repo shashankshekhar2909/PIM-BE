@@ -13,9 +13,9 @@ router = APIRouter()
 # Default onboarding steps configuration
 DEFAULT_ONBOARDING_STEPS = [
     {
-        "step_key": "company_setup",
-        "title": "Company Setup",
-        "description": "Basic company information and branding",
+        "step_key": "company_info",
+        "title": "Company Info",
+        "description": "Basic information",
         "order": 1,
         "is_required": True,
         "category": "setup",
@@ -23,54 +23,44 @@ DEFAULT_ONBOARDING_STEPS = [
         "estimated_time": 5
     },
     {
-        "step_key": "user_invitation",
-        "title": "Invite Team Members",
-        "description": "Add team members to your organization",
+        "step_key": "csv_upload",
+        "title": "CSV Upload & Validation",
+        "description": "Product data",
         "order": 2,
-        "is_required": False,
-        "category": "setup",
-        "icon": "👥",
-        "estimated_time": 3
-    },
-    {
-        "step_key": "category_setup",
-        "title": "Product Categories",
-        "description": "Set up your product categories and schemas",
-        "order": 3,
         "is_required": True,
-        "category": "configuration",
-        "icon": "📂",
+        "category": "data",
+        "icon": "📊",
         "estimated_time": 10
     },
     {
-        "step_key": "product_import",
-        "title": "Import Products",
-        "description": "Import your product catalog",
-        "order": 4,
+        "step_key": "field_setup",
+        "title": "Field Setup",
+        "description": "Configure fields",
+        "order": 3,
         "is_required": True,
-        "category": "data",
-        "icon": "📦",
-        "estimated_time": 15
-    },
-    {
-        "step_key": "ai_configuration",
-        "title": "AI Configuration",
-        "description": "Configure AI features for your catalog",
-        "order": 5,
-        "is_required": False,
         "category": "configuration",
-        "icon": "🤖",
+        "icon": "⚙️",
         "estimated_time": 8
     },
     {
-        "step_key": "integration_setup",
-        "title": "Integrations",
-        "description": "Connect with external systems",
-        "order": 6,
-        "is_required": False,
-        "category": "configuration",
-        "icon": "🔗",
-        "estimated_time": 12
+        "step_key": "preview",
+        "title": "Preview",
+        "description": "Sample SKU",
+        "order": 4,
+        "is_required": True,
+        "category": "review",
+        "icon": "👁️",
+        "estimated_time": 3
+    },
+    {
+        "step_key": "complete",
+        "title": "Complete",
+        "description": "Finish setup",
+        "order": 5,
+        "is_required": True,
+        "category": "completion",
+        "icon": "✅",
+        "estimated_time": 2
     }
 ]
 
@@ -204,7 +194,7 @@ def get_progress_steps(
     if tenant:
         # Update company setup step with current tenant data
         for step in progress["steps"]:
-            if step["step_key"] == "company_setup":
+            if step["step_key"] == "company_info":
                 step["data"] = {
                     "company_name": tenant.company_name,
                     "logo_url": tenant.logo_url
@@ -224,7 +214,7 @@ def complete_step(
     """
     Mark a step as completed.
     
-    For company_setup step, supports direct URL pasting for logo:
+    For company_info step, supports direct URL pasting for logo:
     - Accepts any valid URL pointing to an image
     - Common formats: .jpg, .jpeg, .png, .gif, .svg, .webp, .bmp, .tiff
     - Also accepts URLs with image-related keywords in the path
@@ -235,7 +225,7 @@ def complete_step(
         raise HTTPException(status_code=404, detail="Step not found")
     
     # Handle company setup step specifically
-    if step_key == "company_setup":
+    if step_key == "company_info":
         tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")

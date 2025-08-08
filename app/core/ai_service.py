@@ -104,33 +104,60 @@ class GeminiAIService:
             response_text = self._make_request(prompt)
             
             # Try to extract JSON from the response
+            json_str = self._extract_json_from_response(response_text)
+            
+            if json_str:
+                result = json.loads(json_str)
+                return result
+            else:
+                raise Exception("Could not extract JSON from AI response")
+            
+        except json.JSONDecodeError as e:
+            logging.warning(f"Failed to parse Gemini response as JSON: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to parse AI response")
+        except Exception as e:
+            logging.warning(f"AI analysis failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+    
+    def _extract_json_from_response(self, response_text: str) -> str:
+        """
+        Extract JSON from AI response, handling various formats.
+        
+        Args:
+            response_text: Raw response from AI service
+            
+        Returns:
+            Extracted JSON string or None if extraction fails
+        """
+        try:
+            # Try to find JSON in code blocks
             if "```json" in response_text:
                 json_start = response_text.find("```json") + 7
                 json_end = response_text.find("```", json_start)
-                json_str = response_text[json_start:json_end].strip()
+                if json_end > json_start:
+                    return response_text[json_start:json_end].strip()
+            
             elif "```" in response_text:
                 json_start = response_text.find("```") + 3
                 json_end = response_text.find("```", json_start)
-                json_str = response_text[json_start:json_end].strip()
-            else:
-                json_str = response_text.strip()
+                if json_end > json_start:
+                    return response_text[json_start:json_end].strip()
             
-            # Remove any leading/trailing non-JSON text
-            json_str = json_str.strip()
-            if json_str.startswith("```"):
-                json_str = json_str[3:]
-            if json_str.endswith("```"):
-                json_str = json_str[:-3]
+            # Try to find JSON object directly
+            start_brace = response_text.find("{")
+            end_brace = response_text.rfind("}")
             
-            result = json.loads(json_str)
-            return result
+            if start_brace != -1 and end_brace != -1 and end_brace > start_brace:
+                json_str = response_text[start_brace:end_brace + 1]
+                # Validate it's actually JSON
+                json.loads(json_str)  # This will raise JSONDecodeError if invalid
+                return json_str
             
-        except json.JSONDecodeError as e:
-            logging.error(f"Failed to parse Gemini response as JSON: {response_text}")
-            raise HTTPException(status_code=500, detail="Failed to parse AI response")
-        except Exception as e:
-            logging.error(f"AI analysis error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+            # If no JSON found, return None
+            return None
+            
+        except Exception:
+            return None
     
     def normalize_field_names(self, headers: List[str]) -> List[Dict[str, Any]]:
         """

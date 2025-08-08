@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # 🚀 PIM System Deployment Script
 # This is the ONLY deployment script you need to run
@@ -35,10 +35,20 @@ print_info() {
     echo -e "${BLUE}ℹ️  $1${NC}"
 }
 
+print_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+}
+
 print_header() {
     echo -e "${PURPLE}================================${NC}"
     echo -e "${PURPLE}  $1${NC}"
     echo -e "${PURPLE}================================${NC}"
+}
+
+# Function to validate email format (POSIX compatible)
+validate_email() {
+    echo "$1" | grep -E "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$" > /dev/null
+    return $?
 }
 
 # Function to prompt for admin credentials
@@ -50,11 +60,12 @@ prompt_admin_credentials() {
     
     # Prompt for email
     while true; do
-        read -p "Admin email (default: admin@pim.com): " input_email
+        printf "Admin email (default: admin@pim.com): "
+        read input_email
         if [ -z "$input_email" ]; then
             ADMIN_EMAIL="admin@pim.com"
             break
-        elif [[ "$input_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+        elif validate_email "$input_email"; then
             ADMIN_EMAIL="$input_email"
             break
         else
@@ -64,8 +75,10 @@ prompt_admin_credentials() {
     
     # Prompt for password
     while true; do
-        echo -n "Admin password: "
-        read -s input_password
+        printf "Admin password: "
+        stty -echo
+        read input_password
+        stty echo
         echo ""
         
         if [ -z "$input_password" ]; then
@@ -78,8 +91,10 @@ prompt_admin_credentials() {
             continue
         fi
         
-        echo -n "Confirm password: "
-        read -s confirm_password
+        printf "Confirm password: "
+        stty -echo
+        read confirm_password
+        stty echo
         echo ""
         
         if [ "$input_password" = "$confirm_password" ]; then
@@ -127,13 +142,13 @@ setup_environment() {
     chmod 777 db
     
     # Move existing database to db directory if it exists
-    if [[ -f "pim.db" ]]; then
+    if [ -f "pim.db" ]; then
         print_info "Moving existing database to db directory..."
         mv pim.db db/
     fi
     
     # Create .env file if it doesn't exist
-    if [[ ! -f ".env" ]]; then
+    if [ ! -f ".env" ]; then
         print_info "Creating .env file..."
         cat > .env << 'EOF'
 # Supabase Configuration
@@ -153,11 +168,11 @@ EOF
 
 # Function to check if we're in a multi-service environment
 check_multi_service() {
-    if [[ -f "../../docker-compose.yml" ]]; then
+    if [ -f "../../docker-compose.yml" ]; then
         print_info "Multi-service environment detected"
         COMPOSE_DIR="../../"
         return 0
-    elif [[ -f "docker-compose.yml" ]]; then
+    elif [ -f "docker-compose.yml" ]; then
         print_info "Standalone environment detected"
         COMPOSE_DIR="."
         return 1
@@ -358,7 +373,7 @@ main() {
 }
 
 # Parse command line arguments
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
     case $1 in
         -h|--help)
             usage
@@ -370,6 +385,7 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
     esac
+    shift
 done
 
 # Run main deployment

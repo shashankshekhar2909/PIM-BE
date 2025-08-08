@@ -44,14 +44,17 @@ class AICSVProcessor:
             headers = df.columns.tolist()
             sample_data = df.head(5).values.tolist()
             
+            # Try AI analysis first, fallback to basic analysis if it fails
+            analysis = None
             if self.ai_available:
                 try:
-                    # Analyze with AI
                     analysis = self.ai_service.analyze_file_content(headers, sample_data)
+                    logging.info("AI analysis completed successfully")
                 except Exception as e:
-                    logging.warning(f"AI analysis failed, using fallback: {str(e)}")
+                    logging.info(f"AI analysis not available, using fallback: {str(e)}")
                     analysis = self._fallback_analysis(headers, sample_data)
             else:
+                logging.info("AI service not available, using fallback analysis")
                 analysis = self._fallback_analysis(headers, sample_data)
             
             return {
@@ -85,10 +88,13 @@ class AICSVProcessor:
         
         for header in headers:
             header_lower = header.lower().strip()
-            normalized_name = header_lower.replace(' ', '_').replace('-', '_')
+            normalized_name = header_lower.replace(' ', '_').replace('-', '_').replace('.', '_')
             
             # Check if it's a standard field
             is_standard = any(field in header_lower for field in standard_fields)
+            
+            # Determine field type based on header name
+            field_type = self._detect_field_type(header_lower)
             
             if is_standard:
                 standard_fields_found.append(normalized_name)
@@ -99,7 +105,7 @@ class AICSVProcessor:
                 "original_field_name": header,
                 "normalized_field_name": normalized_name,
                 "field_label": header.replace('_', ' ').title(),
-                "field_type": "string",  # Default to string
+                "field_type": field_type,
                 "is_standard_field": is_standard,
                 "description": f"Field: {header}"
             })
@@ -115,10 +121,40 @@ class AICSVProcessor:
             "standard_fields_found": standard_fields_found,
             "additional_fields_found": additional_fields_found,
             "recommendations": [
-                "AI analysis not available, using fallback analysis",
-                "Review field mappings manually for accuracy"
+                "Using fallback analysis - AI service not available",
+                "Review field mappings manually for accuracy",
+                "Consider updating field types based on actual data"
             ]
         }
+    
+    def _detect_field_type(self, header_lower: str) -> str:
+        """
+        Detect field type based on header name.
+        
+        Args:
+            header_lower: Lowercase header name
+            
+        Returns:
+            Detected field type (string, number, boolean, date)
+        """
+        # Price-related fields
+        if any(word in header_lower for word in ['price', 'cost', 'amount', 'value', 'rate']):
+            return "number"
+        
+        # Date-related fields
+        if any(word in header_lower for word in ['date', 'created', 'updated', 'expiry', 'expiration']):
+            return "date"
+        
+        # Boolean fields
+        if any(word in header_lower for word in ['is_', 'has_', 'active', 'enabled', 'available']):
+            return "boolean"
+        
+        # ID fields
+        if any(word in header_lower for word in ['id', 'sku', 'code']):
+            return "string"
+        
+        # Default to string
+        return "string"
     
     def process_file_with_mappings(self, file: UploadFile, field_mappings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
