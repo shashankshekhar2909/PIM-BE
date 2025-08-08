@@ -142,38 +142,135 @@ pim-be/
 
 ## 🚀 **Deployment Options**
 
-### **Option 1: Standalone Deployment**
+### **After Code Updates - How to Deploy**
+
+#### **Option 1: Full Redeploy (Recommended for Major Changes)**
 ```bash
-# In the pim-be directory
+# This is the complete deployment script - use for major changes
 ./deploy.sh
 ```
+**When to use:**
+- ✅ New features added
+- ✅ Database schema changes
+- ✅ New dependencies added
+- ✅ Major code refactoring
+- ✅ First-time deployment
 
-### **Option 2: Multi-Service Deployment**
+#### **Option 2: Quick Redeploy (For Minor Changes)**
 ```bash
-# In a multi-service environment
-# The script automatically detects and configures
-./deploy.sh
-```
-
-## 🔄 **Management Commands**
-
-### **Start Application**
-```bash
-./deploy.sh
-```
-
-### **Stop Application**
-```bash
+# Stop containers
 docker compose down
-```
 
-### **View Logs**
+# Rebuild and start (faster than full deploy)
+docker compose up --build -d
+
+# Check status
+docker compose ps
+```
+**When to use:**
+- ✅ Bug fixes
+- ✅ Minor code changes
+- ✅ Configuration updates
+- ✅ When you want to skip admin setup
+
+#### **Option 3: Hot Reload (For Development)**
 ```bash
+# If you're in development mode with volume mounts
+docker compose restart pim
+```
+**When to use:**
+- ✅ Code changes only (no new dependencies)
+- ✅ Development environment
+- ✅ When using volume mounts for live code updates
+
+#### **Option 4: Service-Specific Update**
+```bash
+# Update only the PIM service
+docker compose up --build -d pim
+
+# Check logs
 docker compose logs pim -f
 ```
+**When to use:**
+- ✅ Only PIM service changes
+- ✅ Other services are working fine
+- ✅ Quick testing of changes
 
-### **Restart Application**
+### **Deployment Checklist**
+
+#### **Before Deploying**
+1. ✅ **Code committed** to version control
+2. ✅ **Tests passed** (if applicable)
+3. ✅ **Dependencies updated** (if needed)
+4. ✅ **Environment variables** configured
+5. ✅ **Database backups** (for production)
+
+#### **After Deploying**
+1. ✅ **Health check** - `curl http://localhost:8004/health`
+2. ✅ **Service status** - `docker compose ps`
+3. ✅ **Logs check** - `docker compose logs pim -f`
+4. ✅ **API test** - Test a few endpoints
+5. ✅ **User login** - Verify authentication works
+
+### **Troubleshooting Deployment**
+
+#### **Common Issues**
 ```bash
+# If containers won't start
+docker compose down -v
+docker compose up --build -d
+
+# If database issues
+docker compose down
+rm -rf db/pim.db  # WARNING: This deletes all data
+./deploy.sh
+
+# If port conflicts
+docker compose down
+# Check what's using port 8004
+lsof -i :8004
+# Kill conflicting process or change port in docker-compose.yml
+```
+
+#### **Logs and Debugging**
+```bash
+# View real-time logs
+docker compose logs pim -f
+
+# View specific service logs
+docker compose logs pim --tail=100
+
+# Check container status
+docker compose ps
+
+# Enter container for debugging
+docker compose exec pim bash
+```
+
+### **Production Deployment**
+
+#### **For Production Environment**
+```bash
+# 1. Backup current deployment
+docker compose down
+cp -r db db_backup_$(date +%Y%m%d_%H%M%S)
+
+# 2. Pull latest code
+git pull origin main
+
+# 3. Full redeploy
+./deploy.sh
+
+# 4. Verify deployment
+curl http://localhost:8004/health
+docker compose ps
+```
+
+#### **Rollback Plan**
+```bash
+# If deployment fails, rollback
+docker compose down
+git checkout HEAD~1  # Go back one commit
 ./deploy.sh
 ```
 

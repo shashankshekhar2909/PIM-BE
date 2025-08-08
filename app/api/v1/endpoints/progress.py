@@ -7,6 +7,7 @@ from app.models.progress import OnboardingStep, TenantProgress
 from typing import List, Dict, Any
 from datetime import datetime
 from urllib.parse import urlparse
+import logging
 
 router = APIRouter()
 
@@ -95,13 +96,41 @@ def validate_logo_url(logo_url: str) -> bool:
     return True
 
 def initialize_onboarding_steps(db: Session):
-    """Initialize default onboarding steps if they don't exist"""
-    existing_steps = db.query(OnboardingStep).count()
-    if existing_steps == 0:
+    """Initialize default onboarding steps if they don't exist or need migration"""
+    existing_steps = db.query(OnboardingStep).all()
+    
+    # If no steps exist, create all new steps
+    if not existing_steps:
         for step_data in DEFAULT_ONBOARDING_STEPS:
             step = OnboardingStep(**step_data)
             db.add(step)
         db.commit()
+        return
+    
+    # Check if we need to migrate from old steps to new steps
+    existing_step_keys = {step.step_key for step in existing_steps}
+    new_step_keys = {step["step_key"] for step in DEFAULT_ONBOARDING_STEPS}
+    
+    # If the step keys don't match, we need to migrate
+    if existing_step_keys != new_step_keys:
+        logging.info("Migrating onboarding steps from old to new structure")
+        
+        # Delete all existing steps
+        db.query(OnboardingStep).delete()
+        
+        # Create new steps
+        for step_data in DEFAULT_ONBOARDING_STEPS:
+            step = OnboardingStep(**step_data)
+            db.add(step)
+        
+        # Also clean up any old progress records that reference old step keys
+        old_step_keys = existing_step_keys - new_step_keys
+        if old_step_keys:
+            for old_key in old_step_keys:
+                db.query(TenantProgress).filter(TenantProgress.step_key == old_key).delete()
+        
+        db.commit()
+        logging.info("Onboarding steps migration completed")
 
 def get_tenant_progress(db: Session, tenant_id: int) -> Dict[str, Any]:
     """Get progress for a specific tenant"""
@@ -219,10 +248,13 @@ def complete_step(
     - Common formats: .jpg, .jpeg, .png, .gif, .svg, .webp, .bmp, .tiff
     - Also accepts URLs with image-related keywords in the path
     """
+    # Initialize steps if needed (this will handle migration from old to new steps)
+    initialize_onboarding_steps(db)
+    
     # Verify step exists
     step = db.query(OnboardingStep).filter(OnboardingStep.step_key == step_key).first()
     if not step:
-        raise HTTPException(status_code=404, detail="Step not found")
+        raise HTTPException(status_code=404, detail=f"Step '{step_key}' not found")
     
     # Handle company setup step specifically
     if step_key == "company_info":
@@ -289,10 +321,13 @@ def reset_step(
     current_user: User = Depends(get_current_user)
 ):
     """Reset a step (mark as incomplete)"""
+    # Initialize steps if needed (this will handle migration from old to new steps)
+    initialize_onboarding_steps(db)
+    
     # Verify step exists
     step = db.query(OnboardingStep).filter(OnboardingStep.step_key == step_key).first()
     if not step:
-        raise HTTPException(status_code=404, detail="Step not found")
+        raise HTTPException(status_code=404, detail=f"Step '{step_key}' not found")
     
     # Find and update progress
     progress = db.query(TenantProgress).filter(
