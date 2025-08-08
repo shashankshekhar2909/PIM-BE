@@ -434,7 +434,7 @@ The system supports both local and Supabase authentication:
 
 ## 🔍 **Search & Filters**
 
-### **GET** `/search`
+### **GET** `/products/search`
 **Search products with advanced filters**
 
 **Query Parameters:**
@@ -451,6 +451,7 @@ The system supports both local and Supabase authentication:
 - `brand` (string, optional): Brand search (comma-separated)
 - `field_name` (string, optional): Specific field search
 - `field_value` (string, optional): Field value search (comma-separated)
+- `field_type` (string, optional): Filter by field type (primary, secondary, all)
 
 **Response (200):**
 ```json
@@ -458,7 +459,13 @@ The system supports both local and Supabase authentication:
   "products": [...],
   "total_count": 50,
   "skip": 0,
-  "limit": 100
+  "limit": 100,
+  "query": "search term",
+  "searchable_fields": ["manufacturer", "supplier", "brand"],
+  "field_filters": {
+    "price_min": 0,
+    "price_max": 1000
+  }
 }
 ```
 
@@ -477,6 +484,50 @@ The system supports both local and Supabase authentication:
     "Sony": 25,
     "Apple": 30,
     "Samsung": 15
+  }
+}
+```
+
+### **GET** `/products/filters`
+**Get all available filters for search functionality**
+
+**Description:** Main filters endpoint that returns all unique filter data for building search interfaces and dropdowns.
+
+**Response (200):**
+```json
+{
+  "filters": {
+    "manufacturer": ["Sony", "Samsung", "Apple"],
+    "supplier": ["Electronics Supplier", "Tech Store"],
+    "brand": ["PlayStation", "Galaxy", "iPhone"],
+    "categories": [
+      {
+        "id": 1,
+        "name": "Electronics",
+        "description": "Electronic products"
+      },
+      {
+        "id": 2,
+        "name": "Gaming",
+        "description": "Gaming products"
+      }
+    ],
+    "price_range": {
+      "min": 99.99,
+      "max": 999.99,
+      "currency": "USD"
+    },
+    "sku_id": ["SKU001", "SKU002", "SKU003"]
+  },
+  "searchable_fields": ["manufacturer", "supplier", "brand", "category_id", "price", "sku_id"],
+  "total_filters": 6,
+  "field_counts": {
+    "manufacturer": 3,
+    "supplier": 2,
+    "brand": 3,
+    "categories": 2,
+    "price_range": 1,
+    "sku_id": 3
   }
 }
 ```

@@ -10,7 +10,7 @@ router = APIRouter()
 
 @router.get("")
 def search_products(
-    q: Optional[str] = Query(None, description="General search query across all searchable fields"),
+    q: Optional[str] = Query(None, alias="query", description="General search query across all searchable fields"),
     skip: int = Query(0, description="Number of records to skip"),
     limit: int = Query(100, description="Maximum number of records to return"),
     category_id: Optional[int] = Query(None, description="Filter by category ID"),
@@ -25,6 +25,7 @@ def search_products(
     # Dynamic field search (for additional data fields)
     field_name: Optional[str] = Query(None, description="Search in specific additional data field"),
     field_value: Optional[str] = Query(None, description="Value to search for in the specified field (comma-separated values: 'Value1,Value2')"),
+    field_type: Optional[str] = Query(None, description="Filter by field type (primary, secondary, all)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -32,12 +33,13 @@ def search_products(
     Search products with field-specific query parameters.
     
     Supports:
-    - General search across all searchable fields (q parameter)
+    - General search across all searchable fields (q or query parameter)
     - Field-specific search (sku_id, manufacturer, supplier, brand, etc.)
     - Multiple values per field using comma-separated values
     - Price range filtering (price_min, price_max)
     - Dynamic field search (field_name + field_value)
     - Category filtering
+    - Field type filtering (primary, secondary, all)
     
     Only searches in fields marked as searchable in field configurations.
     """
@@ -48,11 +50,20 @@ def search_products(
         query = query.filter(Product.category_id == category_id)
     
     # Get searchable field configurations
-    searchable_configs = db.query(FieldConfiguration).filter(
+    searchable_configs_query = db.query(FieldConfiguration).filter(
         FieldConfiguration.tenant_id == current_user.tenant_id,
         FieldConfiguration.is_searchable == True
-    ).all()
+    )
     
+    # Apply field type filter if specified
+    if field_type and field_type.lower() in ['primary', 'secondary', 'all']:
+        if field_type.lower() == 'primary':
+            searchable_configs_query = searchable_configs_query.filter(FieldConfiguration.is_primary == True)
+        elif field_type.lower() == 'secondary':
+            searchable_configs_query = searchable_configs_query.filter(FieldConfiguration.is_secondary == True)
+        # For 'all', no additional filter needed
+    
+    searchable_configs = searchable_configs_query.all()
     searchable_fields = [config.field_name for config in searchable_configs]
     
     # If no searchable fields configured and no search query provided, return empty results
@@ -75,9 +86,19 @@ def search_products(
     # Helper function to handle comma-separated values
     def split_comma_values(value):
         """Split comma-separated values and return list of trimmed values"""
-        if not value:
+        if not value or value.strip() == "":
             return []
         return [v.strip() for v in value.split(',') if v.strip()]
+    
+    # Helper function to validate numeric values
+    def validate_numeric(value, field_name):
+        """Validate and return numeric value, or None if invalid"""
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
     
     # Field-specific search conditions with support for multiple values
     if sku_id and 'sku_id' in searchable_fields:
@@ -102,17 +123,21 @@ def search_products(
             field_filters["supplier"] = supplier_values
     
     # Price filtering
-    if price is not None and 'price' in searchable_fields:
-        search_conditions.append(Product.price == price)
-        field_filters["price"] = price
+    validated_price = validate_numeric(price, "price")
+    validated_price_min = validate_numeric(price_min, "price_min")
+    validated_price_max = validate_numeric(price_max, "price_max")
     
-    if price_min is not None and 'price' in searchable_fields:
-        search_conditions.append(Product.price >= price_min)
-        field_filters["price_min"] = price_min
+    if validated_price is not None and 'price' in searchable_fields:
+        search_conditions.append(Product.price == validated_price)
+        field_filters["price"] = validated_price
     
-    if price_max is not None and 'price' in searchable_fields:
-        search_conditions.append(Product.price <= price_max)
-        field_filters["price_max"] = price_max
+    if validated_price_min is not None and 'price' in searchable_fields:
+        search_conditions.append(Product.price >= validated_price_min)
+        field_filters["price_min"] = validated_price_min
+    
+    if validated_price_max is not None and 'price' in searchable_fields:
+        search_conditions.append(Product.price <= validated_price_max)
+        field_filters["price_max"] = validated_price_max
     
     # Brand search (additional data field) - support multiple values
     if brand and 'brand' in searchable_fields:
