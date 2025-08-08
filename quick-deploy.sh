@@ -54,6 +54,29 @@ check_docker_compose() {
     print_success "Docker Compose is available"
 }
 
+# Function to detect environment and set compose directory
+detect_environment() {
+    print_info "Detecting environment..."
+    
+    # Check if we're in a multi-service environment (from PIM-BE directory)
+    if [ -f "../../docker-compose.yml" ]; then
+        print_info "Multi-service environment detected"
+        COMPOSE_DIR="../../"
+        cd "$COMPOSE_DIR"
+        print_success "Using multi-service docker-compose.yml from parent directory"
+        print_info "Current directory: $(pwd)"
+    elif [ -f "docker-compose.yml" ]; then
+        print_info "Standalone environment detected"
+        COMPOSE_DIR="."
+        print_success "Using local docker-compose.yml"
+    else
+        print_error "No docker-compose.yml found"
+        echo "Current directory: $(pwd)"
+        echo "Please ensure you're in the correct directory (PIM-BE folder)"
+        exit 1
+    fi
+}
+
 # Function to check service health
 check_health() {
     print_info "Checking service health..."
@@ -89,21 +112,35 @@ main() {
     check_docker
     check_docker_compose
     
+    # Detect environment and set compose directory
+    detect_environment
+    
     print_info "Starting quick deployment..."
     
     # Stop existing containers
     print_info "Stopping existing containers..."
     docker compose down 2>/dev/null || true
     
-    # Rebuild and start containers
-    print_info "Rebuilding and starting containers..."
-    docker compose up --build -d
+    # Rebuild and start containers (only the pim service)
+    print_info "Rebuilding and starting PIM service..."
+    print_info "Build context: $(pwd)/fastAPI/PIM-BE"
+    
+    # Check if the build context exists
+    if [ ! -d "fastAPI/PIM-BE" ]; then
+        print_error "Build context 'fastAPI/PIM-BE' not found"
+        echo "Current directory: $(pwd)"
+        echo "Available directories:"
+        ls -la
+        exit 1
+    fi
+    
+    docker compose up --build -d pim
     
     # Check if containers started successfully
-    if docker compose ps | grep -q "Up"; then
-        print_success "Containers started successfully!"
+    if docker compose ps pim | grep -q "Up"; then
+        print_success "PIM service started successfully!"
     else
-        print_error "Failed to start containers"
+        print_error "Failed to start PIM service"
         show_status
         exit 1
     fi
