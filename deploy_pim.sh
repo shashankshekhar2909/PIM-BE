@@ -17,11 +17,14 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_NAME="PIM System"
 DEFAULT_ADMIN_EMAIL="admin@pim.com"
-DEFAULT_ADMIN_PASSWORD="admin123"
 DEFAULT_ADMIN_NAME="System Administrator"
 PORT="8004"
 DOCKER_IMAGE_NAME="pim-system"
 CONTAINER_NAME="pim-container"
+
+# Variables for admin credentials
+ADMIN_EMAIL=""
+ADMIN_PASSWORD=""
 
 # Function to print colored output
 print_status() {
@@ -58,6 +61,62 @@ check_port() {
         sudo lsof -ti:$PORT | xargs kill -9 2>/dev/null || true
         sleep 2
     fi
+}
+
+# Function to prompt for admin credentials
+prompt_admin_credentials() {
+    print_header "ADMIN USER SETUP"
+    
+    echo -e "${CYAN}Please provide admin user credentials:${NC}"
+    echo ""
+    
+    # Prompt for email
+    while true; do
+        read -p "Admin email (default: $DEFAULT_ADMIN_EMAIL): " input_email
+        if [ -z "$input_email" ]; then
+            ADMIN_EMAIL="$DEFAULT_ADMIN_EMAIL"
+            break
+        elif [[ "$input_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+            ADMIN_EMAIL="$input_email"
+            break
+        else
+            print_error "Invalid email format. Please enter a valid email address."
+        fi
+    done
+    
+    # Prompt for password
+    while true; do
+        echo -n "Admin password: "
+        read -s input_password
+        echo ""
+        
+        if [ -z "$input_password" ]; then
+            print_error "Password cannot be empty. Please enter a password."
+            continue
+        fi
+        
+        if [ ${#input_password} -lt 6 ]; then
+            print_error "Password must be at least 6 characters long."
+            continue
+        fi
+        
+        echo -n "Confirm password: "
+        read -s confirm_password
+        echo ""
+        
+        if [ "$input_password" = "$confirm_password" ]; then
+            ADMIN_PASSWORD="$input_password"
+            break
+        else
+            print_error "Passwords do not match. Please try again."
+        fi
+    done
+    
+    echo ""
+    print_success "Admin credentials set:"
+    echo -e "${YELLOW}Email:${NC} $ADMIN_EMAIL"
+    echo -e "${YELLOW}Password:${NC} ********"
+    echo ""
 }
 
 # Function to create virtual environment
@@ -97,7 +156,7 @@ run_migrations()
 
 # Function to create admin user
 create_admin_user() {
-    print_status "Creating default admin user..."
+    print_status "Creating admin user..."
     source venv/bin/activate
     
     # Check if admin user already exists
@@ -109,7 +168,7 @@ from app.core.config import settings
 
 engine = create_engine(settings.DATABASE_URL, connect_args={'check_same_thread': False})
 with engine.connect() as conn:
-    result = conn.execute(text('SELECT COUNT(*) FROM users WHERE email = \"$DEFAULT_ADMIN_EMAIL\"'))
+    result = conn.execute(text('SELECT COUNT(*) FROM users WHERE email = \"$ADMIN_EMAIL\"'))
     count = result.scalar()
     if count > 0:
         print('Admin user already exists')
@@ -133,7 +192,7 @@ from datetime import datetime
 
 engine = create_engine(settings.DATABASE_URL, connect_args={'check_same_thread': False})
 with engine.connect() as conn:
-    password_hash = get_password_hash('$DEFAULT_ADMIN_PASSWORD')
+    password_hash = get_password_hash('$ADMIN_PASSWORD')
     current_time = datetime.utcnow().isoformat()
     
     conn.execute(text('''
@@ -141,7 +200,7 @@ with engine.connect() as conn:
             email, password_hash, role, first_name, last_name, 
             is_active, is_blocked, created_at, updated_at, notes
         ) VALUES (
-            '$DEFAULT_ADMIN_EMAIL', :password_hash, 'superadmin', 'System', 'Administrator',
+            '$ADMIN_EMAIL', :password_hash, 'superadmin', 'System', 'Administrator',
             1, 0, :created_at, :updated_at, 'Default superadmin user created by deployment script'
         )
     '''), {
@@ -193,7 +252,7 @@ test_application() {
     # Test admin login
     LOGIN_RESPONSE=$(curl -s -X POST "http://localhost:$PORT/api/v1/auth/login" \
         -H "Content-Type: application/json" \
-        -d "{\"email\": \"$DEFAULT_ADMIN_EMAIL\", \"password\": \"$DEFAULT_ADMIN_PASSWORD\"}")
+        -d "{\"email\": \"$ADMIN_EMAIL\", \"password\": \"$ADMIN_PASSWORD\"}")
     
     if echo "$LOGIN_RESPONSE" | grep -q "superadmin"; then
         print_success "Admin login test passed"
@@ -215,8 +274,8 @@ display_summary() {
     
     echo ""
     echo -e "${GREEN}🔑 ADMIN CREDENTIALS${NC}"
-    echo -e "${YELLOW}Email:${NC} $DEFAULT_ADMIN_EMAIL"
-    echo -e "${YELLOW}Password:${NC} $DEFAULT_ADMIN_PASSWORD"
+    echo -e "${YELLOW}Email:${NC} $ADMIN_EMAIL"
+    echo -e "${YELLOW}Password:${NC} $ADMIN_PASSWORD"
     echo -e "${YELLOW}Role:${NC} superadmin"
     
     echo ""
@@ -276,6 +335,9 @@ main() {
     
     print_success "Prerequisites check passed"
     
+    # Prompt for admin credentials
+    prompt_admin_credentials
+    
     # Check port availability
     check_port
     
@@ -308,13 +370,12 @@ usage() {
     echo "Options:"
     echo "  -h, --help     Show this help message"
     echo "  -p, --port     Specify port (default: 8004)"
-    echo "  -e, --email    Specify admin email (default: admin@pim.com)"
-    echo "  -w, --password Specify admin password (default: admin123)"
     echo ""
     echo "Examples:"
-    echo "  $0                    # Deploy with default settings"
+    echo "  $0                    # Deploy with interactive admin setup"
     echo "  $0 -p 8080           # Deploy on port 8080"
-    echo "  $0 -e admin@test.com -w mypassword  # Custom admin credentials"
+    echo ""
+    echo "Note: Admin credentials will be prompted during deployment for security."
 }
 
 # Parse command line arguments
@@ -326,14 +387,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--port)
             PORT="$2"
-            shift 2
-            ;;
-        -e|--email)
-            DEFAULT_ADMIN_EMAIL="$2"
-            shift 2
-            ;;
-        -w|--password)
-            DEFAULT_ADMIN_PASSWORD="$2"
             shift 2
             ;;
         *)
