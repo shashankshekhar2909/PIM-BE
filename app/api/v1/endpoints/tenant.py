@@ -115,6 +115,20 @@ def get_current_tenant(
     current_user: User = Depends(get_current_user)
 ):
     """Get current user's tenant details."""
+    # Handle superadmin and analyst users who don't have a tenant
+    if current_user.is_superadmin or current_user.is_analyst:
+        return {
+            "id": None,
+            "company_name": "System Administration",
+            "logo_url": None,
+            "created_at": None,
+            "is_system_user": True
+        }
+    
+    # For regular users, check if they have a tenant
+    if not current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -123,7 +137,8 @@ def get_current_tenant(
         "id": tenant.id,
         "company_name": tenant.company_name,
         "logo_url": tenant.logo_url,
-        "created_at": tenant.created_at
+        "created_at": tenant.created_at,
+        "is_system_user": False
     }
 
 @router.get("/{id}")

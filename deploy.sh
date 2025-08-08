@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 🚀 PIM System Docker Deployment Script
-# This script deploys the PIM system using Docker with secure admin setup
+# 🚀 PIM System Deployment Script
+# This is the ONLY deployment script you need to run
 
 set -e  # Exit on any error
 
@@ -20,19 +20,19 @@ ADMIN_PASSWORD=""
 
 # Function to print colored output
 print_status() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}✅ $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}❌ $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${BLUE}ℹ️  $1${NC}"
 }
 
 print_header() {
@@ -151,9 +151,47 @@ EOF
     fi
 }
 
+# Function to check if we're in a multi-service environment
+check_multi_service() {
+    if [[ -f "../../docker-compose.yml" ]]; then
+        print_info "Multi-service environment detected"
+        COMPOSE_DIR="../../"
+        return 0
+    elif [[ -f "docker-compose.yml" ]]; then
+        print_info "Standalone environment detected"
+        COMPOSE_DIR="."
+        return 1
+    else
+        print_error "No docker-compose.yml found"
+        exit 1
+    fi
+}
+
+# Function to update docker-compose.yml for multi-service
+update_multi_service_compose() {
+    if [ "$COMPOSE_DIR" = "../../" ]; then
+        print_info "Updating multi-service docker-compose.yml..."
+        
+        # Check if db mount already exists
+        if ! grep -q "db:/app/db" "$COMPOSE_DIR/docker-compose.yml"; then
+            # Create a backup
+            cp "$COMPOSE_DIR/docker-compose.yml" "$COMPOSE_DIR/docker-compose.yml.backup"
+            
+            # Update the pim service to include db mount
+            sed -i '/pim:/,/healthcheck:/ { /volumes:/!b; /volumes:/a\      - ./fastAPI/PIM-BE/db:/app/db' "$COMPOSE_DIR/docker-compose.yml"
+            
+            print_success "Updated docker-compose.yml with db mount"
+        else
+            print_success "db mount already exists in docker-compose.yml"
+        fi
+    fi
+}
+
 # Function to build and start containers
 build_and_start() {
     print_info "Building and starting containers..."
+    
+    cd "$COMPOSE_DIR"
     
     # Stop existing containers
     docker compose down -v 2>/dev/null || true
@@ -249,46 +287,25 @@ display_summary() {
     
     echo ""
     echo -e "${GREEN}📁 IMPORTANT FILES${NC}"
-    echo -e "${YELLOW}Database:${NC} ./db/pim.db"
+    if [ "$COMPOSE_DIR" = "../../" ]; then
+        echo -e "${YELLOW}Database:${NC} ./fastAPI/PIM-BE/db/pim.db"
+        echo -e "${YELLOW}Compose:${NC} $COMPOSE_DIR/docker-compose.yml"
+    else
+        echo -e "${YELLOW}Database:${NC} ./db/pim.db"
+        echo -e "${YELLOW}Compose:${NC} docker-compose.yml"
+    fi
     echo -e "${YELLOW}Logs:${NC} docker compose logs pim -f"
-    echo -e "${YELLOW}Compose:${NC} docker-compose.yml"
     
     echo ""
     echo -e "${GREEN}🚀 USEFUL COMMANDS${NC}"
     echo -e "${YELLOW}Stop application:${NC} docker compose down"
     echo -e "${YELLOW}View logs:${NC} docker compose logs pim -f"
-    echo -e "${YELLOW}Restart:${NC} ./deploy_docker.sh"
+    echo -e "${YELLOW}Restart:${NC} ./deploy.sh"
     
     echo ""
     echo -e "${PURPLE}================================${NC}"
     echo -e "${GREEN}✅ PIM System deployed successfully!${NC}"
     echo -e "${PURPLE}================================${NC}"
-}
-
-# Main deployment function
-main() {
-    print_header "PIM SYSTEM DOCKER DEPLOYMENT"
-    
-    # Check prerequisites
-    check_prerequisites
-    
-    # Prompt for admin credentials
-    prompt_admin_credentials
-    
-    # Setup environment
-    setup_environment
-    
-    # Build and start containers
-    build_and_start
-    
-    # Wait for service
-    wait_for_service
-    
-    # Create admin user
-    create_admin_user
-    
-    # Display summary
-    display_summary
 }
 
 # Function to show usage
@@ -302,6 +319,42 @@ usage() {
     echo "  $0                    # Deploy with interactive admin setup"
     echo ""
     echo "Note: Admin credentials will be prompted during deployment for security."
+    echo ""
+    echo "This script automatically detects:"
+    echo "  - Standalone Docker environment (docker-compose.yml in current dir)"
+    echo "  - Multi-service Docker environment (docker-compose.yml in parent dir)"
+}
+
+# Main deployment function
+main() {
+    print_header "PIM SYSTEM DEPLOYMENT"
+    
+    # Check prerequisites
+    check_prerequisites
+    
+    # Prompt for admin credentials
+    prompt_admin_credentials
+    
+    # Setup environment
+    setup_environment
+    
+    # Check environment type
+    if check_multi_service; then
+        # Multi-service environment
+        update_multi_service_compose
+    fi
+    
+    # Build and start containers
+    build_and_start
+    
+    # Wait for service
+    wait_for_service
+    
+    # Create admin user
+    create_admin_user
+    
+    # Display summary
+    display_summary
 }
 
 # Parse command line arguments

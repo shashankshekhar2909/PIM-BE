@@ -161,6 +161,20 @@ def get_progress_overview(
     current_user: User = Depends(get_current_user)
 ):
     """Get progress overview for the current tenant"""
+    # Handle superadmin and analyst users who don't have a tenant
+    if current_user.is_superadmin or current_user.is_analyst:
+        return {
+            "tenant_id": None,
+            "total_steps": 0,
+            "completed_steps": 0,
+            "progress_percentage": 100,
+            "steps": [],
+            "is_system_user": True
+        }
+    
+    if not current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
     return get_tenant_progress(db, current_user.tenant_id)
 
 @router.get("/steps")
@@ -169,6 +183,20 @@ def get_progress_steps(
     current_user: User = Depends(get_current_user)
 ):
     """Get all onboarding steps with progress"""
+    # Handle superadmin and analyst users who don't have a tenant
+    if current_user.is_superadmin or current_user.is_analyst:
+        return {
+            "tenant_id": None,
+            "total_steps": 0,
+            "completed_steps": 0,
+            "progress_percentage": 100,
+            "steps": [],
+            "is_system_user": True
+        }
+    
+    if not current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
     progress = get_tenant_progress(db, current_user.tenant_id)
     
     # Get tenant details for company setup step

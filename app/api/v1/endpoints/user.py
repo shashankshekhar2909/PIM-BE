@@ -13,7 +13,14 @@ def list_users(
     current_user: User = Depends(get_current_user)
 ):
     """List all users in the current user's tenant."""
-    users = db.query(User).filter(User.tenant_id == current_user.tenant_id).all()
+    # Handle superadmin and analyst users who can see all users
+    if current_user.is_superadmin or current_user.is_analyst:
+        users = db.query(User).all()
+    else:
+        # Regular users can only see users in their own tenant
+        if not current_user.tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        users = db.query(User).filter(User.tenant_id == current_user.tenant_id).all()
     
     return [
         {
@@ -36,11 +43,15 @@ def get_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if user.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Handle superadmin and analyst users who can see all users
+    if not (current_user.is_superadmin or current_user.is_analyst):
+        if user.tenant_id != current_user.tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied")
     
     # Get tenant details
-    tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+    tenant = None
+    if user.tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
     
     return {
         "id": user.id,

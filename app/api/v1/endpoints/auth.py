@@ -93,8 +93,25 @@ def me(
     db: Session = Depends(get_db)
 ):
     """Get current user details with company information."""
-    # Get tenant details
-    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    # Handle superadmin and analyst users who don't have a tenant
+    if current_user.is_superadmin or current_user.is_analyst:
+        return {
+            "id": current_user.id,
+            "email": current_user.email,
+            "role": current_user.role,
+            "tenant": {
+                "id": None,
+                "company_name": "System Administration",
+                "logo_url": None,
+                "created_at": None
+            },
+            "is_system_user": True
+        }
+    
+    # Get tenant details for regular users
+    tenant = None
+    if current_user.tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
     
     return {
         "id": current_user.id,
@@ -105,7 +122,8 @@ def me(
             "company_name": tenant.company_name,
             "logo_url": tenant.logo_url,
             "created_at": tenant.created_at
-        } if tenant else None
+        } if tenant else None,
+        "is_system_user": False
     }
 
 @router.post("/logout")
