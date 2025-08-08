@@ -5,8 +5,9 @@ from app.core.supabase import get_supabase_client, get_supabase_admin_client
 from app.core.social_auth import SocialAuthService
 from app.models.user import User
 from app.models.tenant import Tenant
-from app.core.security import create_access_token
+from app.core.security import create_access_token, verify_password
 import logging
+from datetime import datetime
 
 class SupabaseAuthService:
     def __init__(self):
@@ -73,12 +74,33 @@ class SupabaseAuthService:
             raise HTTPException(status_code=500, detail="Failed to create user")
     
     def login_with_email(self, email: str, password: str, db: Session) -> Dict[str, Any]:
-        """Login user with email and password using Supabase."""
+        """Login user with email and password using Supabase or local authentication."""
         try:
+            # First, try to find user in our database
+            user = db.query(User).filter(User.email == email).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found in system")
+            
+            # Check if user is blocked
+            if user.is_blocked:
+                raise HTTPException(status_code=403, detail="User account is blocked")
+            
+            # Try local authentication first (if user has password_hash)
+            if user.password_hash and user.password_hash.strip():
+                if verify_password(password, user.password_hash):
+                    # Update last login
+                    user.last_login = datetime.utcnow()
+                    db.commit()
+                    db.refresh(user)
+                    return self._create_auth_response(user)
+                else:
+                    raise HTTPException(status_code=401, detail="Invalid credentials")
+            
+            # If no local password, try Supabase authentication
             if not self.supabase:
                 raise HTTPException(
                     status_code=503, 
-                    detail="Supabase authentication is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables."
+                    detail="Supabase authentication is not configured and no local password found."
                 )
             
             # Authenticate with Supabase
@@ -90,14 +112,10 @@ class SupabaseAuthService:
             if auth_response.user is None:
                 raise HTTPException(status_code=401, detail="Invalid credentials")
             
-            # Find user in our database
-            user = db.query(User).filter(User.email == email).first()
-            if not user:
-                raise HTTPException(status_code=401, detail="User not found in system")
-            
             # Update supabase_user_id if not set
             if not user.supabase_user_id:
                 user.supabase_user_id = auth_response.user.id
+                user.last_login = datetime.utcnow()
                 db.commit()
                 db.refresh(user)
             
@@ -168,43 +186,55 @@ class SupabaseAuthService:
             
             # Verify token with Supabase
             user_response = self.supabase.auth.get_user(token)
-            
-            if user_response.user is None:
+            if not user_response.user:
                 return None
             
             # Find user in our database
-            user = db.query(User).filter(User.supabase_user_id == user_response.user.id).first()
-            if not user:
-                # Try to find by email as fallback
-                user = db.query(User).filter(User.email == user_response.user.email).first()
-                if user and not user.supabase_user_id:
-                    # Update with supabase_user_id
-                    user.supabase_user_id = user_response.user.id
-                    db.commit()
-                    db.refresh(user)
-            
+            user = db.query(User).filter(User.email == user_response.user.email).first()
             return user
             
         except Exception as e:
-            logging.error(f"Token verification error: {str(e)}")
+            logging.debug(f"Token verification failed: {str(e)}")
             return None
     
     def _create_auth_response(self, user: User) -> Dict[str, Any]:
         """Create authentication response with user data and token."""
-        # Create a custom JWT token for our system
-        token_data = {"sub": str(user.id)}
-        if user.supabase_user_id:
-            token_data["supabase_user_id"] = user.supabase_user_id
+        from datetime import timedelta
+        from app.core.security import create_access_token
         
-        token = create_access_token(token_data)
+        # Create access token
+        access_token_expires = timedelta(minutes=60 * 24)  # 24 hours
+        access_token = create_access_token(
+            data={"sub": str(user.id)}, expires_delta=access_token_expires
+        )
+        
+        # Get tenant details if user has a tenant
+        tenant_info = None
+        if user.tenant_id:
+            from app.models.tenant import Tenant
+            tenant = user.tenant if hasattr(user, 'tenant') else None
+            if tenant:
+                tenant_info = {
+                    "id": tenant.id,
+                    "company_name": tenant.company_name,
+                    "logo_url": tenant.logo_url
+                }
         
         return {
-            "access_token": token,
+            "access_token": access_token,
             "token_type": "bearer",
             "user": {
-                "id": user.id,
+                "id": str(user.id),  # Convert to string as you showed
                 "email": user.email,
+                "name": user.full_name or user.email,  # Use full_name or email as name
+                "role": user.role,
+                "isSetupComplete": True,  # Default to True for existing users
+                "companyId": str(user.tenant_id) if user.tenant_id else "",
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_active": user.is_active,
+                "is_blocked": user.is_blocked,
                 "tenant_id": user.tenant_id,
-                "role": user.role
+                "tenant": tenant_info
             }
         } 

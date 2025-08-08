@@ -460,13 +460,33 @@ def list_products(
         
         # For general search, use OR logic within the search term
         if general_search_conditions:
-            from sqlalchemy import or_
             search_conditions.append(or_(*general_search_conditions))
     
     # Apply search conditions using AND logic for multiple filters
     if search_conditions:
         from sqlalchemy import and_
         query = query.filter(and_(*search_conditions))
+    else:
+        # If search was provided but no searchable fields configured, return empty results
+        if search and not searchable_fields:
+            return {
+                "products": [],
+                "total_count": 0,
+                "skip": skip,
+                "limit": limit,
+                "searchable_fields": [],
+                "message": "No searchable fields configured"
+            }
+        # If search conditions were provided but none matched, return empty results
+        elif any([search, sku_id, manufacturer, supplier, brand, field_name, price, price_min, price_max]) and not search_conditions:
+            return {
+                "products": [],
+                "total_count": 0,
+                "skip": skip,
+                "limit": limit,
+                "searchable_fields": searchable_fields,
+                "message": "No products found matching the search criteria"
+            }
     
     # Apply field type filtering
     if field_type or primary_only or secondary_only:

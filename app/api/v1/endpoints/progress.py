@@ -6,6 +6,7 @@ from app.models.tenant import Tenant
 from app.models.progress import OnboardingStep, TenantProgress
 from typing import List, Dict, Any
 from datetime import datetime
+from urllib.parse import urlparse
 
 router = APIRouter()
 
@@ -73,6 +74,36 @@ DEFAULT_ONBOARDING_STEPS = [
     }
 ]
 
+def validate_logo_url(logo_url: str) -> bool:
+    """Validate if the logo URL is valid and points to an image"""
+    if not logo_url:
+        return True  # Empty URL is allowed
+    
+    # Check if it's a valid URL
+    try:
+        result = urlparse(logo_url)
+        if not all([result.scheme, result.netloc]):
+            return False
+    except:
+        return False
+    
+    # Check if it's likely an image URL (common image extensions)
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.bmp', '.tiff']
+    parsed_url = urlparse(logo_url)
+    path = parsed_url.path.lower()
+    
+    # Check if URL ends with image extension
+    if any(path.endswith(ext) for ext in image_extensions):
+        return True
+    
+    # Check if URL contains image-related keywords
+    image_keywords = ['image', 'img', 'logo', 'icon', 'photo', 'picture']
+    if any(keyword in path for keyword in image_keywords):
+        return True
+    
+    # If no clear image indicators, still allow it (user might know what they're doing)
+    return True
+
 def initialize_onboarding_steps(db: Session):
     """Initialize default onboarding steps if they don't exist"""
     existing_steps = db.query(OnboardingStep).count()
@@ -100,23 +131,9 @@ def get_tenant_progress(db: Session, tenant_id: int) -> Dict[str, Any]:
     
     # Build response
     steps_data = []
-    total_steps = len(steps)
-    completed_steps = 0
-    required_steps = 0
-    completed_required_steps = 0
-    
     for step in steps:
         progress = progress_map.get(step.step_key)
-        is_completed = progress.is_completed if progress else False
-        
-        if is_completed:
-            completed_steps += 1
-        if step.is_required:
-            required_steps += 1
-            if is_completed:
-                completed_required_steps += 1
-        
-        step_data = {
+        steps_data.append({
             "step_key": step.step_key,
             "title": step.title,
             "description": step.description,
@@ -125,24 +142,17 @@ def get_tenant_progress(db: Session, tenant_id: int) -> Dict[str, Any]:
             "category": step.category,
             "icon": step.icon,
             "estimated_time": step.estimated_time,
-            "is_completed": is_completed,
+            "is_completed": progress.is_completed if progress else False,
             "completed_at": progress.completed_at if progress else None,
-            "data": progress.data if progress else None
-        }
-        steps_data.append(step_data)
-    
-    # Calculate percentages
-    overall_progress = (completed_steps / total_steps * 100) if total_steps > 0 else 0
-    required_progress = (completed_required_steps / required_steps * 100) if required_steps > 0 else 0
+            "data": progress.data if progress else {}
+        })
     
     return {
-        "overall_progress": round(overall_progress, 1),
-        "required_progress": round(required_progress, 1),
-        "total_steps": total_steps,
-        "completed_steps": completed_steps,
-        "required_steps": required_steps,
-        "completed_required_steps": completed_required_steps,
-        "steps": steps_data
+        "tenant_id": tenant_id,
+        "steps": steps_data,
+        "total_steps": len(steps),
+        "completed_steps": len([s for s in steps_data if s["is_completed"]]),
+        "progress_percentage": round((len([s for s in steps_data if s["is_completed"]]) / len(steps)) * 100, 1)
     }
 
 @router.get("/overview")
@@ -150,7 +160,7 @@ def get_progress_overview(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get overall progress overview for the current user's tenant"""
+    """Get progress overview for the current tenant"""
     return get_tenant_progress(db, current_user.tenant_id)
 
 @router.get("/steps")
@@ -158,28 +168,23 @@ def get_progress_steps(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get detailed progress for all steps"""
+    """Get all onboarding steps with progress"""
     progress = get_tenant_progress(db, current_user.tenant_id)
     
-    # Group steps by category
-    categories = {}
-    for step in progress["steps"]:
-        category = step["category"]
-        if category not in categories:
-            categories[category] = []
-        categories[category].append(step)
+    # Get tenant details for company setup step
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if tenant:
+        # Update company setup step with current tenant data
+        for step in progress["steps"]:
+            if step["step_key"] == "company_setup":
+                step["data"] = {
+                    "company_name": tenant.company_name,
+                    "logo_url": tenant.logo_url
+                }
+                step["is_completed"] = bool(tenant.company_name and tenant.logo_url)
+                break
     
-    return {
-        "overview": {
-            "overall_progress": progress["overall_progress"],
-            "required_progress": progress["required_progress"],
-            "total_steps": progress["total_steps"],
-            "completed_steps": progress["completed_steps"],
-            "required_steps": progress["required_steps"],
-            "completed_required_steps": progress["completed_required_steps"]
-        },
-        "categories": categories
-    }
+    return progress
 
 @router.post("/steps/{step_key}/complete")
 def complete_step(
@@ -188,11 +193,44 @@ def complete_step(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Mark a step as completed"""
+    """
+    Mark a step as completed.
+    
+    For company_setup step, supports direct URL pasting for logo:
+    - Accepts any valid URL pointing to an image
+    - Common formats: .jpg, .jpeg, .png, .gif, .svg, .webp, .bmp, .tiff
+    - Also accepts URLs with image-related keywords in the path
+    """
     # Verify step exists
     step = db.query(OnboardingStep).filter(OnboardingStep.step_key == step_key).first()
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
+    
+    # Handle company setup step specifically
+    if step_key == "company_setup":
+        tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Validate company name
+        company_name = data.get("company_name")
+        if not company_name or not company_name.strip():
+            raise HTTPException(status_code=400, detail="Company name is required")
+        
+        # Validate logo URL if provided
+        logo_url = data.get("logo_url")
+        if logo_url is not None and logo_url.strip():
+            if not validate_logo_url(logo_url.strip()):
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Invalid logo URL. Please provide a valid URL pointing to an image file."
+                )
+            logo_url = logo_url.strip()
+        
+        # Update tenant with company setup data
+        tenant.company_name = company_name.strip()
+        tenant.logo_url = logo_url
+        db.commit()
     
     # Check if already completed
     existing_progress = db.query(TenantProgress).filter(

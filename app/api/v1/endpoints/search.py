@@ -55,8 +55,8 @@ def search_products(
     
     searchable_fields = [config.field_name for config in searchable_configs]
     
-    if not searchable_fields:
-        # If no searchable fields configured, return empty results
+    # If no searchable fields configured and no search query provided, return empty results
+    if not searchable_fields and not any([q, sku_id, manufacturer, supplier, brand, field_name, price, price_min, price_max]):
         return {
             "products": [],
             "total_count": 0,
@@ -64,7 +64,8 @@ def search_products(
             "limit": limit,
             "query": q,
             "searchable_fields": [],
-            "field_filters": {}
+            "field_filters": {},
+            "message": "No searchable fields configured"
         }
     
     # Build search conditions - use AND logic for multiple filters
@@ -83,7 +84,6 @@ def search_products(
         sku_values = split_comma_values(sku_id)
         if sku_values:
             sku_conditions = [Product.sku_id.ilike(f"%{val}%") for val in sku_values]
-            from sqlalchemy import or_
             search_conditions.append(or_(*sku_conditions))
             field_filters["sku_id"] = sku_values
     
@@ -91,7 +91,6 @@ def search_products(
         manufacturer_values = split_comma_values(manufacturer)
         if manufacturer_values:
             manufacturer_conditions = [Product.manufacturer.ilike(f"%{val}%") for val in manufacturer_values]
-            from sqlalchemy import or_
             search_conditions.append(or_(*manufacturer_conditions))
             field_filters["manufacturer"] = manufacturer_values
     
@@ -99,7 +98,6 @@ def search_products(
         supplier_values = split_comma_values(supplier)
         if supplier_values:
             supplier_conditions = [Product.supplier.ilike(f"%{val}%") for val in supplier_values]
-            from sqlalchemy import or_
             search_conditions.append(or_(*supplier_conditions))
             field_filters["supplier"] = supplier_values
     
@@ -197,23 +195,36 @@ def search_products(
         
         # For general search, use OR logic within the search term
         if general_search_conditions:
-            from sqlalchemy import or_
             search_conditions.append(or_(*general_search_conditions))
     
     # Apply search conditions using AND logic for multiple filters
     if search_conditions:
         query = query.filter(and_(*search_conditions))
     else:
-        # If no search conditions, return empty results
-        return {
-            "products": [],
-            "total_count": 0,
-            "skip": skip,
-            "limit": limit,
-            "query": q,
-            "searchable_fields": searchable_fields,
-            "field_filters": field_filters
-        }
+        # If no search conditions and no searchable fields, return empty results
+        if not searchable_fields:
+            return {
+                "products": [],
+                "total_count": 0,
+                "skip": skip,
+                "limit": limit,
+                "query": q,
+                "searchable_fields": [],
+                "field_filters": field_filters,
+                "message": "No searchable fields configured"
+            }
+        # If search conditions were provided but none matched, return empty results
+        elif any([q, sku_id, manufacturer, supplier, brand, field_name, price, price_min, price_max]):
+            return {
+                "products": [],
+                "total_count": 0,
+                "skip": skip,
+                "limit": limit,
+                "query": q,
+                "searchable_fields": searchable_fields,
+                "field_filters": field_filters,
+                "message": "No products found matching the search criteria"
+            }
     
     # Apply pagination
     total_count = query.count()
