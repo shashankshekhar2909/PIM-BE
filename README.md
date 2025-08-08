@@ -23,35 +23,36 @@ The script will:
 docker compose down
 ```
 
-## 🔐 **Secure Admin Setup**
+## 🔐 **Authentication & User Management**
 
-The deployment script **securely prompts** for admin credentials:
+### **Hybrid Authentication System**
+- **Local Authentication**: Superadmin users with local password hashing
+- **Supabase Authentication**: Regular users with Supabase integration
+- **Automatic User Sync**: Users from Supabase are automatically created in local database
 
-1. **Email Prompt**: 
-   - Default: `admin@pim.com`
-   - Can be customized during deployment
-   - Validates email format
+### **User Types**
+1. **Superadmin**: Full system access, local authentication
+2. **Analyst**: View-only access to all data
+3. **Tenant Admin**: Manage tenant-specific users and data
+4. **Tenant User**: Standard user with tenant-scoped access
 
-2. **Password Prompt**:
-   - **Hidden input** (password not displayed)
-   - **Confirmation required** (type twice)
-   - **Minimum 6 characters**
-   - **Secure validation**
+### **Supabase Integration**
+- ✅ **Automatic User Creation**: Users existing in Supabase are automatically created in local database
+- ✅ **Seamless Login**: No manual intervention required for Supabase users
+- ✅ **Default Tenant**: New users get assigned to "Default Company" tenant
+- ✅ **Backward Compatibility**: Existing local users continue to work
 
-### **Security Features**
-- ✅ **No hardcoded passwords** in scripts or documentation
-- ✅ **Hidden password input** during prompting
-- ✅ **Password confirmation** to prevent typos
-- ✅ **Email validation** for proper format
-- ✅ **Minimum password length** enforcement
-- ✅ **Credentials only displayed once** at the end
+### **Login Flow**
+1. **Check Local Database**: First checks if user exists locally
+2. **Supabase Authentication**: If not found locally, tries Supabase authentication
+3. **Auto-Create User**: If Supabase authentication succeeds, creates user locally
+4. **Return Token**: Provides access token for API access
 
-## 🌐 **Access URLs**
-
-- **Application**: http://localhost:8004
-- **Health Check**: http://localhost:8004/health
-- **API Documentation**: http://localhost:8004/docs
-- **Interactive API**: http://localhost:8004/redoc
+### **Testing Supabase Login**
+```bash
+# Test script for Supabase users
+python3 test_supabase_fix.py
+```
 
 ## 🔑 **Admin Credentials**
 
@@ -63,6 +64,13 @@ Email: [your-custom-email]
 Password: [your-custom-password]
 Role: superadmin
 ```
+
+## 🌐 **Access URLs**
+
+- **Application**: http://localhost:8004
+- **Health Check**: http://localhost:8004/health
+- **API Documentation**: http://localhost:8004/docs
+- **Interactive API**: http://localhost:8004/redoc
 
 ## 🎨 **Key Features**
 
@@ -92,6 +100,18 @@ Role: superadmin
 - **Database**: SQLite with automatic migrations
 - **API**: RESTful FastAPI with automatic documentation
 - **Health Checks**: Built-in monitoring endpoints
+
+## 🐛 **Recent Fixes**
+
+### **Supabase Login Issue** ✅ **FIXED**
+- **Problem**: Users existing in Supabase but not in local database couldn't login
+- **Solution**: Automatic user creation from Supabase during login
+- **Result**: Seamless login experience for all Supabase users
+
+### **Pydantic Warnings** ✅ **FIXED**
+- **Problem**: Field name conflicts with Pydantic BaseModel
+- **Solution**: Renamed conflicting fields and used aliases
+- **Result**: Clean application logs with no warnings
 
 ## 📁 **Project Structure**
 

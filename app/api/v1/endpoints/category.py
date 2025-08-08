@@ -208,37 +208,52 @@ async def upload_category_csv(
 def create_category(
     name: str = Body(...),
     description: str = Body(""),
-    schema_json: dict = Body({}),
+    schema_data: dict = Body({}, alias="schema_json"),  # Renamed to avoid Pydantic conflict
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new category (tenant-scoped).
+    Create a new category.
+    
+    Args:
+        name: Category name (required)
+        description: Category description (optional)
+        schema_data: JSON schema for the category (optional)
     """
-    # Check if category already exists for this tenant
-    existing_category = db.query(Category).filter(
-        Category.name == name,
-        Category.tenant_id == current_user.tenant_id
-    ).first()
-    
-    if existing_category:
-        raise HTTPException(status_code=400, detail="Category with this name already exists")
-    
-    category = Category(
-        name=name, 
-        description=description, 
-        schema_json=schema_json, 
-        tenant_id=current_user.tenant_id
-    )
-    db.add(category)
-    db.commit()
-    db.refresh(category)
-    return {
-        "id": category.id,
-        "name": category.name,
-        "description": category.description,
-        "schema_json": category.schema_json
-    }
+    try:
+        # Check if category already exists
+        existing_category = db.query(Category).filter(
+            Category.name == name,
+            Category.tenant_id == current_user.tenant_id
+        ).first()
+        
+        if existing_category:
+            raise HTTPException(status_code=400, detail=f"Category with name '{name}' already exists")
+        
+        # Create new category
+        category = Category(
+            name=name,
+            description=description,
+            schema_json=schema_data,  # Use the renamed field
+            tenant_id=current_user.tenant_id
+        )
+        db.add(category)
+        db.commit()
+        db.refresh(category)
+        
+        return {
+            "id": category.id,
+            "name": category.name,
+            "description": category.description,
+            "schema_json": category.schema_json,
+            "created_at": category.created_at
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create category: {str(e)}")
 
 @router.get("")
 def list_categories(
@@ -407,27 +422,41 @@ def get_category_schema(
 @router.put("/{id}/schema")
 def edit_category_schema(
     id: int,
-    schema_json: dict = Body(...),
+    schema_data: dict = Body(..., alias="schema_json"),  # Renamed to avoid Pydantic conflict
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Edit schema for a specific category (tenant-scoped).
+    Edit category schema.
+    
+    Args:
+        id: Category ID
+        schema_data: New JSON schema for the category
     """
-    category = db.query(Category).filter(
-        Category.id == id,
-        Category.tenant_id == current_user.tenant_id
-    ).first()
-    
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-    
-    category.schema_json = schema_json
-    db.commit()
-    db.refresh(category)
-    
-    return {
-        "id": category.id,
-        "name": category.name,
-        "schema_json": category.schema_json
-    } 
+    try:
+        # Get category
+        category = db.query(Category).filter(
+            Category.id == id,
+            Category.tenant_id == current_user.tenant_id
+        ).first()
+        
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        # Update schema
+        category.schema_json = schema_data  # Use the renamed field
+        db.commit()
+        db.refresh(category)
+        
+        return {
+            "id": category.id,
+            "name": category.name,
+            "schema_json": category.schema_json,
+            "updated_at": category.updated_at
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update category schema: {str(e)}") 

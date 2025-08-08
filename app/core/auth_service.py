@@ -78,8 +78,61 @@ class SupabaseAuthService:
         try:
             # First, try to find user in our database
             user = db.query(User).filter(User.email == email).first()
+            
+            # If user doesn't exist locally, try to authenticate with Supabase first
             if not user:
-                raise HTTPException(status_code=401, detail="User not found in system")
+                if not self.supabase:
+                    raise HTTPException(
+                        status_code=503, 
+                        detail="Supabase authentication is not configured and user not found in local database."
+                    )
+                
+                # Try to authenticate with Supabase to see if user exists there
+                try:
+                    auth_response = self.supabase.auth.sign_in_with_password({
+                        "email": email,
+                        "password": password
+                    })
+                    
+                    if auth_response.user is None:
+                        raise HTTPException(status_code=401, detail="Invalid credentials")
+                    
+                    # User exists in Supabase but not in local database - create them
+                    supabase_user = auth_response.user
+                    
+                    # Create a default tenant if needed
+                    default_tenant = db.query(Tenant).filter(Tenant.company_name == "Default Company").first()
+                    if not default_tenant:
+                        default_tenant = Tenant(company_name="Default Company")
+                        db.add(default_tenant)
+                        db.flush()
+                    
+                    # Create user in local database
+                    user = User(
+                        email=email,
+                        supabase_user_id=supabase_user.id,
+                        tenant_id=default_tenant.id,
+                        role="tenant_user",  # Default role
+                        is_active=True,
+                        is_blocked=False,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+                    
+                    logging.info(f"Created new user from Supabase: {email}")
+                    
+                    # Return auth response immediately since we already authenticated
+                    return self._create_auth_response(user)
+                    
+                except Exception as e:
+                    logging.error(f"Supabase authentication failed for {email}: {str(e)}")
+                    if "Invalid login credentials" in str(e) or "Email not confirmed" in str(e):
+                        raise HTTPException(status_code=401, detail="Invalid credentials")
+                    else:
+                        raise HTTPException(status_code=401, detail="Authentication failed")
             
             # Check if user is blocked
             if user.is_blocked:
@@ -104,29 +157,35 @@ class SupabaseAuthService:
                 )
             
             # Authenticate with Supabase
-            auth_response = self.supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": password
-            })
-            
-            if auth_response.user is None:
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-            
-            # Update supabase_user_id if not set
-            if not user.supabase_user_id:
-                user.supabase_user_id = auth_response.user.id
-                user.last_login = datetime.utcnow()
-                db.commit()
-                db.refresh(user)
-            
-            return self._create_auth_response(user)
+            try:
+                auth_response = self.supabase.auth.sign_in_with_password({
+                    "email": email,
+                    "password": password
+                })
+                
+                if auth_response.user is None:
+                    raise HTTPException(status_code=401, detail="Invalid credentials")
+                
+                # Update supabase_user_id if not set
+                if not user.supabase_user_id:
+                    user.supabase_user_id = auth_response.user.id
+                    user.last_login = datetime.utcnow()
+                    db.commit()
+                    db.refresh(user)
+                
+                return self._create_auth_response(user)
+                
+            except Exception as e:
+                logging.error(f"Supabase authentication failed for existing user {email}: {str(e)}")
+                if "Invalid login credentials" in str(e) or "Email not confirmed" in str(e):
+                    raise HTTPException(status_code=401, detail="Invalid credentials")
+                else:
+                    raise HTTPException(status_code=401, detail="Authentication failed")
             
         except HTTPException:
             raise
         except Exception as e:
             logging.error(f"Login error: {str(e)}")
-            if "Invalid login credentials" in str(e):
-                raise HTTPException(status_code=401, detail="Invalid credentials")
             raise HTTPException(status_code=500, detail="Login failed")
     
     def signup_with_social(self, provider: str, access_token: str, company_name: str, db: Session) -> Dict[str, Any]:
