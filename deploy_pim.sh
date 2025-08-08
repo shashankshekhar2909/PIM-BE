@@ -54,6 +54,73 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Function to check prerequisites
+check_prerequisites() {
+    print_status "Checking prerequisites..."
+    
+    # Check Python3
+    if ! command_exists python3; then
+        print_error "Python3 is not installed"
+        print_status "Please install Python3:"
+        echo "  Ubuntu/Debian: sudo apt-get install python3 python3-pip python3-venv"
+        echo "  CentOS/RHEL: sudo yum install python3 python3-pip"
+        echo "  macOS: brew install python3"
+        exit 1
+    fi
+    
+    # Check pip3 or pip
+    if ! command_exists pip3 && ! command_exists pip; then
+        print_error "pip is not installed"
+        print_status "Installing pip..."
+        
+        # Try to install pip3
+        if command_exists apt-get; then
+            # Ubuntu/Debian
+            sudo apt-get update && sudo apt-get install -y python3-pip
+        elif command_exists yum; then
+            # CentOS/RHEL
+            sudo yum install -y python3-pip
+        elif command_exists brew; then
+            # macOS
+            brew install python3
+        else
+            print_error "Could not automatically install pip. Please install it manually:"
+            echo "  Ubuntu/Debian: sudo apt-get install python3-pip"
+            echo "  CentOS/RHEL: sudo yum install python3-pip"
+            echo "  macOS: brew install python3"
+            exit 1
+        fi
+        
+        # Verify pip installation
+        if ! command_exists pip3 && ! command_exists pip; then
+            print_error "Failed to install pip. Please install it manually."
+            exit 1
+        fi
+    fi
+    
+    # Check curl
+    if ! command_exists curl; then
+        print_error "curl is not installed"
+        print_status "Installing curl..."
+        
+        if command_exists apt-get; then
+            sudo apt-get update && sudo apt-get install -y curl
+        elif command_exists yum; then
+            sudo yum install -y curl
+        elif command_exists brew; then
+            brew install curl
+        else
+            print_error "Could not automatically install curl. Please install it manually:"
+            echo "  Ubuntu/Debian: sudo apt-get install curl"
+            echo "  CentOS/RHEL: sudo yum install curl"
+            echo "  macOS: brew install curl"
+            exit 1
+        fi
+    fi
+    
+    print_success "Prerequisites check passed"
+}
+
 # Function to check if port is available
 check_port() {
     if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null ; then
@@ -316,24 +383,7 @@ main() {
     print_header "PIM SYSTEM DEPLOYMENT"
     
     # Check prerequisites
-    print_status "Checking prerequisites..."
-    
-    if ! command_exists python3; then
-        print_error "Python3 is not installed"
-        exit 1
-    fi
-    
-    if ! command_exists pip; then
-        print_error "pip is not installed"
-        exit 1
-    fi
-    
-    if ! command_exists curl; then
-        print_error "curl is not installed"
-        exit 1
-    fi
-    
-    print_success "Prerequisites check passed"
+    check_prerequisites
     
     # Prompt for admin credentials
     prompt_admin_credentials
