@@ -261,10 +261,10 @@ class SupabaseAuthService:
         from datetime import timedelta
         from app.core.security import create_access_token
         
-        # Create access token
+        # Create access token with integer user ID
         access_token_expires = timedelta(minutes=60 * 24)  # 24 hours
         access_token = create_access_token(
-            data={"sub": str(user.id)}, expires_delta=access_token_expires
+            data={"sub": user.id}, expires_delta=access_token_expires  # Use integer ID directly
         )
         
         # Get tenant details if user has a tenant
@@ -283,7 +283,7 @@ class SupabaseAuthService:
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
-                "id": str(user.id),  # Convert to string as you showed
+                "id": str(user.id),  # Convert to string for frontend compatibility
                 "email": user.email,
                 "name": user.full_name or user.email,  # Use full_name or email as name
                 "role": user.role,

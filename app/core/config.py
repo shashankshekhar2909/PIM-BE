@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     
     # Security
     SECRET_KEY: str = "your-secret-key-here"
+    ALGORITHM: str = "HS256"  # JWT algorithm
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # JWT token expiration
     
     # AI Service configuration
     OPENAI_API_KEY: str = ""
