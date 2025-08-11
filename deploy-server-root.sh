@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 🚀 SERVER DEPLOYMENT SCRIPT FOR PIM SYSTEM
-# This script handles complete server deployment including database setup and Docker configuration
+# 🚀 SERVER DEPLOYMENT SCRIPT FOR ROOT EXECUTION
+# This script is designed for server deployment where root execution is necessary
 
 set -e  # Exit on any error
 
@@ -51,28 +51,12 @@ print_step() {
 
 # Check if running as root
 check_root() {
-    if [ "$EUID" -eq 0 ] && [ "$FORCE_ROOT" != "true" ]; then
-        print_warning "Running as root - this is not recommended for security reasons"
-        print_info "Consider creating a dedicated user for deployment"
-        
-        # Ask for confirmation when running as root
-        read -p "Do you want to continue as root? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Exiting. Please create a dedicated user and run the script again."
-            print_info "Example:"
-            echo "  sudo adduser deploy"
-            echo "  sudo usermod -aG docker deploy"
-            echo "  su - deploy"
-            echo "  ./deploy-server.sh"
-            exit 1
-        fi
-        
-        print_warning "Continuing as root - ensure proper security measures are in place"
-    elif [ "$EUID" -eq 0 ] && [ "$FORCE_ROOT" = "true" ]; then
-        print_warning "Running as root with --force-root flag"
-        print_warning "Ensure proper security measures are in place"
+    if [ "$EUID" -ne 0 ]; then
+        print_error "This script must be run as root for server deployment"
+        print_info "Please run: sudo ./deploy-server-root.sh"
+        exit 1
     fi
+    print_warning "Running as root for server deployment"
 }
 
 # Check prerequisites
@@ -81,44 +65,66 @@ check_prerequisites() {
     
     # Check if Docker is installed
     if ! command -v docker &> /dev/null; then
-        print_error "Docker is not installed. Please install Docker first."
-        exit 1
+        print_error "Docker is not installed. Installing Docker..."
+        install_docker
     fi
     
     # Check if Docker Compose is available
     if ! docker compose version &> /dev/null; then
-        print_error "Docker Compose is not available. Please install Docker Compose first."
-        exit 1
+        print_error "Docker Compose is not available. Installing Docker Compose..."
+        install_docker_compose
     fi
     
     # Check if curl is available
     if ! command -v curl &> /dev/null; then
-        print_error "curl is not installed. Please install curl first."
-        exit 1
+        print_error "curl is not installed. Installing curl..."
+        apt-get update && apt-get install -y curl
     fi
     
-    # Additional checks for root execution
-    if [ "$EUID" -eq 0 ]; then
-        print_info "Running as root - checking Docker daemon..."
-        
-        # Check if Docker daemon is running
-        if ! docker info &> /dev/null; then
-            print_error "Docker daemon is not running. Starting Docker daemon..."
-            systemctl start docker || {
-                print_error "Failed to start Docker daemon"
-                exit 1
-            }
-        fi
-        
-        # Check Docker daemon status
-        if systemctl is-active --quiet docker; then
-            print_success "Docker daemon is running"
-        else
-            print_warning "Docker daemon status is unclear"
-        fi
-    fi
+    # Ensure Docker daemon is running
+    print_info "Ensuring Docker daemon is running..."
+    systemctl start docker
+    systemctl enable docker
     
     print_success "All prerequisites are satisfied"
+}
+
+# Install Docker if not present
+install_docker() {
+    print_info "Installing Docker..."
+    
+    # Update package index
+    apt-get update
+    
+    # Install prerequisites
+    apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+    
+    # Add Docker's official GPG key
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    
+    # Add Docker repository
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # Install Docker
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io
+    
+    # Start and enable Docker
+    systemctl start docker
+    systemctl enable docker
+    
+    print_success "Docker installed successfully"
+}
+
+# Install Docker Compose if not present
+install_docker_compose() {
+    print_info "Installing Docker Compose..."
+    
+    # Install Docker Compose
+    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    
+    print_success "Docker Compose installed successfully"
 }
 
 # Create necessary directories
@@ -136,6 +142,10 @@ setup_directories() {
         mkdir -p "$BACKUP_DIR"
         print_info "Created backup directory: $BACKUP_DIR"
     fi
+    
+    # Set proper ownership and permissions
+    chown -R root:root "$DATA_DIR" "$BACKUP_DIR"
+    chmod 755 "$DATA_DIR" "$BACKUP_DIR"
     
     print_success "Directories setup completed"
 }
@@ -173,6 +183,7 @@ manage_database() {
         fi
         
         # Set proper permissions
+        chown root:root "${DATA_DIR}/pim.db"
         chmod 644 "${DATA_DIR}/pim.db"
         print_success "Database permissions set"
         
@@ -182,8 +193,8 @@ manage_database() {
     fi
     
     # Set directory permissions
-    chmod 755 "$DATA_DIR"
-    chmod 755 "$BACKUP_DIR"
+    chown root:root "$DATA_DIR" "$BACKUP_DIR"
+    chmod 755 "$DATA_DIR" "$BACKUP_DIR"
     print_success "Directory permissions set"
 }
 
@@ -273,6 +284,7 @@ show_status() {
         echo "  Database file: ${DATA_DIR}/pim.db"
         echo "  Size: $(du -h "${DATA_DIR}/pim.db" | cut -f1)"
         echo "  Permissions: $(ls -la "${DATA_DIR}/pim.db" | awk '{print $1}')"
+        echo "  Owner: $(ls -la "${DATA_DIR}/pim.db" | awk '{print $3":"$4}')"
     else
         echo "  No database file found"
     fi
@@ -280,12 +292,13 @@ show_status() {
 
 # Main deployment function
 main() {
-    print_header "SERVER DEPLOYMENT"
+    print_header "SERVER DEPLOYMENT (ROOT)"
     
     print_info "Project: $PROJECT_NAME"
     print_info "Service: $SERVICE_NAME"
     print_info "Port: $PORT"
     print_info "Current directory: $(pwd)"
+    print_warning "Running as root for server deployment"
     
     # Check if we're in the right directory
     if [ ! -f "Dockerfile" ] && [ ! -f "../../docker-compose.yml" ]; then
@@ -328,56 +341,8 @@ main() {
     echo -e "  1. Check logs: ${YELLOW}docker compose logs $SERVICE_NAME${NC}"
     echo -e "  2. Check container status: ${YELLOW}docker compose ps${NC}"
     echo -e "  3. Restart service: ${YELLOW}docker compose restart $SERVICE_NAME${NC}"
-    echo -e "  4. Full restart: ${YELLOW}./deploy-server.sh${NC}"
+    echo -e "  4. Full restart: ${YELLOW}./deploy-server-root.sh${NC}"
 }
-
-# Function to show help
-show_help() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -h, --help       Show this help message"
-    echo "  --clean          Clean up Docker resources before deployment"
-    echo "  --force          Force overwrite existing database"
-    echo "  --force-root     Force execution as root (for server deployment)"
-    echo ""
-    echo "Examples:"
-    echo "  $0                    # Normal deployment"
-    echo "  $0 --clean            # Clean deployment"
-    echo "  $0 --force            # Force overwrite database"
-    echo "  $0 --force-root       # Force execution as root"
-    echo "  $0 --clean --force    # Clean deployment with force overwrite"
-    echo ""
-    echo "Server Deployment:"
-    echo "  $0 --force-root       # Recommended for server deployment"
-}
-
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        --clean)
-            CLEAN_MODE=true
-            shift
-            ;;
-        --force)
-            FORCE_MODE=true
-            shift
-            ;;
-        --force-root)
-            FORCE_ROOT=true
-            shift
-            ;;
-        *)
-            print_error "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
-    esac
-done
 
 # Run main function
 main "$@"
