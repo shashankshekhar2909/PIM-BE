@@ -47,6 +47,8 @@
 - **Full Deploy** creates backups before making changes
 - Both scripts work for both standalone and multi-service environments
 - Both scripts handle root and non-root users automatically
+- **Default admin user** (admin@pim.com / admin123) is automatically created if none exists
+- **Always change the default password** after first login!
 
 ## 📋 **After Deployment**
 

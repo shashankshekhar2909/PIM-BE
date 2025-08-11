@@ -68,8 +68,13 @@ if [ -f "pim.db" ]; then
     print_success "Database moved to data/pim.db"
 elif [ -f "data/pim.db" ]; then
     print_info "Database already in data directory"
+    
+    # Create backup of existing database
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    cp "data/pim.db" "backups/pim.db.backup.${TIMESTAMP}"
+    print_success "Created backup: backups/pim.db.backup.${TIMESTAMP}"
 else
-    print_warning "No existing database found - new one will be created"
+    print_warning "No existing database found - new one will be created with default admin user"
 fi
 
 # Set permissions
@@ -82,6 +87,7 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 print_success "Database setup completed"
+print_info "Note: Default admin user (admin@pim.com / admin123) will be created if none exists"
 
 print_header "Step 3: Build and Deploy"
 print_info "Building and starting service..."
@@ -137,6 +143,21 @@ else
     print_warning "Database test inconclusive - this may be expected"
 fi
 
+# Test default admin user access
+print_info "Testing default admin user access..."
+ADMIN_RESPONSE=$(curl -s -X POST "http://localhost:8004/api/v1/auth/login" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"admin@pim.com","password":"admin123"}' \
+    2>/dev/null || echo "FAILED")
+
+if echo "$ADMIN_RESPONSE" | grep -q "access_token"; then
+    print_success "Default admin user (admin@pim.com / admin123) is working!"
+elif echo "$ADMIN_RESPONSE" | grep -q "Invalid login credentials"; then
+    print_warning "Default admin user not found - will be created by migrations"
+else
+    print_warning "Admin user test inconclusive"
+fi
+
 print_header "Final Status"
 print_info "Service status:"
 docker compose ps pim
@@ -158,6 +179,12 @@ echo "  Application: http://localhost:8004"
 echo "  Health Check: http://localhost:8004/health"
 echo "  API Docs: http://localhost:8004/docs"
 echo ""
+echo "👤 Default Admin User:"
+echo "  Email: admin@pim.com"
+echo "  Password: admin123"
+echo "  Role: superadmin"
+echo "  Note: This user is automatically created if none exists"
+echo ""
 echo "📋 Useful Commands:"
 echo "  View logs: docker compose logs pim -f"
 echo "  Stop service: docker compose down"
@@ -173,3 +200,5 @@ echo "  If you have issues:"
 echo "  1. Check logs: docker compose logs pim"
 echo "  2. Restart: docker compose restart pim"
 echo "  3. Full restart: ./full-deploy.sh"
+echo ""
+echo "⚠️  IMPORTANT: Change the default admin password after first login!"
