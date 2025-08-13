@@ -23,7 +23,8 @@ from app.models import *
 from app.models.base import Base
 from app.core.migrations import run_migrations
 from app.core.security import get_password_hash
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
+from app.core.config import settings
 
 def ensure_directory_exists(path):
     """Ensure directory exists and is writable"""
@@ -67,22 +68,40 @@ def create_production_database():
     logger.info("Creating fresh production database...")
     
     try:
-        # Create all tables
-        Base.metadata.create_all(bind=engine)
+        # Create a new engine with the absolute path to ensure file creation
+        db_url = f"sqlite:///{db_path}"
+        logger.info(f"Creating engine with URL: {db_url}")
+        
+        # Create engine with explicit path
+        local_engine = create_engine(
+            db_url,
+            connect_args={"check_same_thread": False}
+        )
+        
+        # Create all tables using the local engine
+        Base.metadata.create_all(bind=local_engine)
         logger.info("✅ Database tables created successfully")
         
         # Enable foreign key support for SQLite
-        if "sqlite" in str(engine.url):
-            with engine.connect() as conn:
-                conn.execute(text("PRAGMA foreign_keys=ON"))
-                logger.info("✅ Foreign key support enabled")
+        with local_engine.connect() as conn:
+            conn.execute(text("PRAGMA foreign_keys=ON"))
+            logger.info("✅ Foreign key support enabled")
         
-        # Run migrations
-        run_migrations()
-        logger.info("✅ Migrations completed successfully")
+        # Run migrations using the local engine
+        # We need to temporarily replace the global engine
+        original_engine = engine
+        try:
+            # Replace the global engine temporarily
+            import app.core.dependencies
+            app.core.dependencies.engine = local_engine
+            run_migrations()
+            logger.info("✅ Migrations completed successfully")
+        finally:
+            # Restore original engine
+            app.core.dependencies.engine = original_engine
         
         # Verify admin user was created
-        with engine.connect() as conn:
+        with local_engine.connect() as conn:
             result = conn.execute(text("SELECT email, role FROM users WHERE role = 'superadmin'"))
             admin_users = result.fetchall()
             
@@ -93,6 +112,9 @@ def create_production_database():
             else:
                 logger.warning("⚠️  No admin users found - creating default admin...")
                 create_default_admin(conn)
+        
+        # Close the local engine
+        local_engine.dispose()
         
         # Ensure the database file exists and set permissions
         if os.path.exists(db_path):
@@ -147,7 +169,7 @@ def create_default_admin(conn):
         })
         
         logger.info("✅ Created default superadmin user: admin@pim.com / admin123")
-        logger.info("⚠️  IMPORTANT: Please change the default password after first login!")
+        logger.info("⚠️  IMPORTANT: Please change the default admin password after first login!")
         
         conn.commit()
         
