@@ -71,167 +71,15 @@ main() {
         exit 1
     fi
     
-    # Check Python dependencies
-    print_info "Checking Python dependencies..."
-    MISSING_DEPS=()
-    
-    # Check for required packages
-    if ! python3 -c "import sqlalchemy" 2>/dev/null; then
-        MISSING_DEPS+=("sqlalchemy")
-    fi
-    
-    if ! python3 -c "import fastapi" 2>/dev/null; then
-        MISSING_DEPS+=("fastapi")
-    fi
-    
-    if ! python3 -c "import uvicorn" 2>/dev/null; then
-        MISSING_DEPS+=("uvicorn")
-    fi
-    
-    if ! python3 -c "import passlib" 2>/dev/null; then
-        MISSING_DEPS+=("passlib")
-    fi
-    
-    if ! python3 -c "import bcrypt" 2>/dev/null; then
-        MISSING_DEPS+=("bcrypt")
-    fi
-    
-    if ! python3 -c "import jose" 2>/dev/null; then
-        MISSING_DEPS+=("python-jose")
-    fi
-    
-    # Report missing dependencies
-    if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-        print_warning "Missing Python dependencies: ${MISSING_DEPS[*]}"
-        print_info "Attempting to install missing dependencies..."
-        
-        # Try to install using pip
-        if command -v pip3 > /dev/null 2>&1; then
-            print_info "Using pip3 to install dependencies..."
-            for dep in "${MISSING_DEPS[@]}"; do
-                print_info "Installing $dep..."
-                if pip3 install "$dep" --user; then
-                    print_success "Installed $dep"
-                else
-                    print_error "Failed to install $dep"
-                    print_info "Trying alternative installation methods..."
-                    
-                    # Try system package manager
-                    if command -v apt-get > /dev/null 2>&1; then
-                        print_info "Trying apt-get for $dep..."
-                        apt-get update && apt-get install -y "python3-$dep" 2>/dev/null || true
-                    elif command -v yum > /dev/null 2>&1; then
-                        print_info "Trying yum for $dep..."
-                        yum install -y "python3-$dep" 2>/dev/null || true
-                    fi
-                fi
-            done
-        else
-            print_warning "pip3 not found, attempting to install it first..."
-            
-            # Try to install pip3
-            if command -v apt-get > /dev/null 2>&1; then
-                print_info "Installing pip3 using apt-get..."
-                apt-get update && apt-get install -y python3-pip
-            elif command -v yum > /dev/null 2>&1; then
-                print_info "Installing pip3 using yum..."
-                yum install -y python3-pip
-            elif command -v curl > /dev/null 2>&1; then
-                print_info "Installing pip3 using get-pip.py..."
-                curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-                python3 get-pip.py --user
-                rm get-pip.py
-            else
-                print_error "Cannot install pip3 automatically"
-                print_info "Please install pip3 manually first:"
-                print_info "  Ubuntu/Debian: apt-get install python3-pip"
-                print_info "  CentOS/RHEL: yum install python3-pip"
-                print_info "  Or download: https://bootstrap.pypa.io/get-pip.py"
-                exit 1
-            fi
-            
-            # Verify pip3 installation
-            if command -v pip3 > /dev/null 2>&1; then
-                print_success "pip3 installed successfully"
-                print_info "Now installing Python dependencies..."
-                
-                # Try to install dependencies using the newly installed pip3
-                for dep in "${MISSING_DEPS[@]}"; do
-                    print_info "Installing $dep..."
-                    if pip3 install "$dep" --user; then
-                        print_success "Installed $dep"
-                    else
-                        print_warning "Failed to install $dep with pip3, trying system packages..."
-                        
-                        # Try system package manager as fallback
-                        if command -v apt-get > /dev/null 2>&1; then
-                            print_info "Trying apt-get for $dep..."
-                            apt-get install -y "python3-$dep" 2>/dev/null || true
-                        elif command -v yum > /dev/null 2>&1; then
-                            print_info "Trying yum for $dep..."
-                            yum install -y "python3-$dep" 2>/dev/null || true
-                        fi
-                    fi
-                done
-            else
-                print_error "pip3 installation failed"
-                print_info "Trying to install dependencies using system packages only..."
-                
-                # Install dependencies using system packages only
-                for dep in "${MISSING_DEPS[@]}"; do
-                    print_info "Installing $dep using system package manager..."
-                    if command -v apt-get > /dev/null 2>&1; then
-                        apt-get update && apt-get install -y "python3-$dep" 2>/dev/null || true
-                    elif command -v yum > /dev/null 2>&1; then
-                        yum install -y "python3-$dep" 2>/dev/null || true
-                    fi
-                done
-            fi
-        fi
-        
-        # If individual installation failed, try requirements.txt
-        if [ ${#STILL_MISSING[@]} -gt 0 ]; then
-            print_warning "Individual package installation had issues, trying requirements.txt..."
-            if [ -f "requirements.txt" ]; then
-                print_info "Installing from requirements.txt..."
-                if pip3 install -r requirements.txt --user; then
-                    print_success "Installed dependencies from requirements.txt"
-                else
-                    print_error "Failed to install from requirements.txt"
-                    print_info "Please install dependencies manually or check your Python environment"
-                    exit 1
-                fi
-            else
-                print_error "requirements.txt not found"
-                print_info "Please install the following packages manually:"
-                echo "  ${MISSING_DEPS[*]}"
-                exit 1
-            fi
-        fi
-        
-        # Verify dependencies again
-        print_info "Verifying dependencies after installation..."
-        STILL_MISSING=()
-        for dep in "${MISSING_DEPS[@]}"; do
-            if ! python3 -c "import $dep" 2>/dev/null; then
-                STILL_MISSING+=("$dep")
-            fi
-        done
-        
-        if [ ${#STILL_MISSING[@]} -gt 0 ]; then
-            print_error "Still missing dependencies: ${STILL_MISSING[*]}"
-            print_info "Please install manually or check your Python environment"
-            exit 1
-        fi
-    else
-        print_success "All required Python dependencies are available"
-    fi
-    
     # Check Docker
     if command -v docker > /dev/null 2>&1; then
         print_success "Docker found: $(docker --version)"
     else
-        print_warning "Docker not found - will use direct Python method"
+        print_error "Docker not found - required for production deployment"
+        print_info "Please install Docker first:"
+        print_info "  Ubuntu/Debian: curl -fsSL https://get.docker.com | sh"
+        print_info "  CentOS/RHEL: yum install -y docker"
+        exit 1
     fi
     
     # Check Docker Compose
@@ -239,11 +87,14 @@ main() {
         print_success "Docker Compose found"
         DOCKER_AVAILABLE=true
     else
-        print_warning "Docker Compose not found - will use direct Python method"
-        DOCKER_AVAILABLE=false
+        print_error "Docker Compose not found - required for production deployment"
+        print_info "Please install Docker Compose first:"
+        print_info "  curl -L 'https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose"
+        print_info "  chmod +x /usr/local/bin/docker-compose"
+        exit 1
     fi
     
-    print_header "Step 2: Database Setup"
+    print_header "Step 2: Docker Build and Database Setup"
     
     # Ensure data directory exists
     mkdir -p data
@@ -254,51 +105,67 @@ main() {
     chmod 755 data backups 2>/dev/null || true
     chmod 666 data/pim.db 2>/dev/null || true
     
-    # Check if create_production_db.py exists
-    if [ ! -f "create_production_db.py" ]; then
-        print_error "create_production_db.py not found in current directory"
-        print_info "Available files:"
-        ls -la *.py 2>/dev/null || echo "No Python files found"
-        exit 1
-    fi
-    
-    print_info "Found create_production_db.py, creating production database..."
-    
-    # Create database using Python directly
-    if python3 create_production_db.py; then
-        print_success "Production database created successfully!"
+    # Build Docker image first
+    print_info "Building Docker image..."
+    if docker-compose build --no-cache 2>/dev/null || docker compose build --no-cache; then
+        print_success "Docker image built successfully"
     else
-        print_error "Failed to create production database"
+        print_error "Failed to build Docker image"
         exit 1
     fi
     
-    print_header "Step 3: Docker Deployment (if available)"
+    # Create database using Docker container
+    print_info "Creating production database using Docker container..."
+    if docker-compose run --rm pim python3 /app/create_production_db.py 2>/dev/null || docker compose run --rm pim python3 /app/create_production_db.py; then
+        print_success "Production database created successfully using Docker!"
+    else
+        print_error "Failed to create database using Docker"
+        print_info "This suggests there's an issue with the Docker setup"
+        print_info "Please check:"
+        print_info "  1. Docker is running: systemctl status docker"
+        print_info "  2. Docker Compose file is correct"
+        print_info "  3. All required files are present"
+        exit 1
+    fi
     
-    if [ "$DOCKER_AVAILABLE" = true ]; then
-        print_info "Attempting Docker deployment..."
+    print_header "Step 3: Docker Deployment"
+    
+    print_info "Starting Docker services..."
+    
+    # Stop any existing containers
+    print_info "Stopping existing containers..."
+    docker-compose down 2>/dev/null || docker compose down 2>/dev/null || true
+    
+    # Start services
+    print_info "Starting services in detached mode..."
+    if docker-compose up -d 2>/dev/null || docker compose up -d; then
+        print_success "Docker services started successfully!"
         
-        # Stop any existing containers
-        print_info "Stopping existing containers..."
-        docker-compose down 2>/dev/null || docker compose down 2>/dev/null || true
+        # Wait for service to start
+        print_info "Waiting for service to start..."
+        sleep 15
         
-        # Build and start
-        print_info "Building and starting Docker containers..."
-        if docker-compose up -d 2>/dev/null || docker compose up -d; then
-            print_success "Docker deployment successful!"
-            
-            # Wait for service to start
-            print_info "Waiting for service to start..."
-            sleep 15
-            
-            # Check status
-            if docker-compose ps 2>/dev/null || docker compose ps; then
-                print_success "Service is running!"
-            fi
+        # Check service status
+        print_info "Checking service status..."
+        if docker-compose ps 2>/dev/null || docker compose ps; then
+            print_success "All services are running!"
+        fi
+        
+        # Check if the application is responding
+        print_info "Testing application health..."
+        sleep 10
+        
+        if curl -s "http://localhost:8004/health" > /dev/null 2>&1; then
+            print_success "Application health check passed!"
         else
-            print_warning "Docker deployment failed, but database is ready"
+            print_warning "Health check not responding yet, checking logs..."
+            docker-compose logs pim --tail=20 2>/dev/null || docker compose logs pim --tail=20
         fi
     else
-        print_info "Skipping Docker deployment (not available)"
+        print_error "Failed to start Docker services"
+        print_info "Checking Docker logs..."
+        docker-compose logs --tail=20 2>/dev/null || docker compose logs --tail=20
+        exit 1
     fi
     
     print_header "Step 4: Verification"
