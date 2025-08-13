@@ -53,8 +53,8 @@ def create_tenant(
     - Common formats: .jpg, .jpeg, .png, .gif, .svg, .webp, .bmp, .tiff
     - Also accepts URLs with image-related keywords in the path
     """
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can create tenants")
+    if not (current_user.is_superadmin or current_user.role == "tenant_admin"):
+        raise HTTPException(status_code=403, detail="Only superadmin or tenant admin users can create tenants")
     
     # Check if user already has a tenant
     if current_user.tenant_id:
@@ -94,9 +94,9 @@ def list_tenants(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List all tenants (admin only)."""
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can list all tenants")
+    """List all tenants (superadmin and analyst only)."""
+    if not (current_user.is_superadmin or current_user.is_analyst):
+        raise HTTPException(status_code=403, detail="Only superadmin or analyst users can list all tenants")
     
     tenants = db.query(Tenant).all()
     return [
@@ -182,8 +182,8 @@ def update_tenant(
     if current_user.tenant_id != id:
         raise HTTPException(status_code=403, detail="Access denied")
     
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can update tenant details")
+    if not (current_user.is_superadmin or current_user.role == "tenant_admin"):
+        raise HTTPException(status_code=403, detail="Only superadmin or tenant admin users can update tenant details")
     
     tenant = db.query(Tenant).filter(Tenant.id == id).first()
     if not tenant:
