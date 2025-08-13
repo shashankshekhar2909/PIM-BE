@@ -7,7 +7,7 @@ from app.core.security import verify_password, create_access_token, get_password
 from sqlalchemy.exc import IntegrityError
 import logging
 from typing import Optional
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from app.core.config import settings
 
 router = APIRouter()
@@ -30,7 +30,7 @@ def signup(
         tenant = Tenant(
             company_name=company_name,
             logo_url=None,
-            created_at=datetime.now(datetime.timezone.utc)
+            created_at=datetime.now(timezone.utc)
         )
         db.add(tenant)
         db.flush()  # Get the tenant ID
