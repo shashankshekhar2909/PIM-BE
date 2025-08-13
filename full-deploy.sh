@@ -185,7 +185,24 @@ main() {
             print_info "Using sudo to set database permissions..."
             sudo chmod 666 data/pim.db
         fi
-        print_success "Database file permissions set"
+        
+        # Also ensure the data directory has write permissions
+        if ! chmod 777 data 2>/dev/null; then
+            print_info "Using sudo to set data directory permissions..."
+            sudo chmod 777 data
+        fi
+        
+        # Set ownership to current user if possible
+        CURRENT_USER=$(whoami)
+        if [ "$CURRENT_USER" != "root" ]; then
+            print_info "Setting database ownership to current user..."
+            if ! chown "$CURRENT_USER:$CURRENT_USER" data/pim.db 2>/dev/null; then
+                print_info "Using sudo to set ownership..."
+                sudo chown "$CURRENT_USER:$CURRENT_USER" data/pim.db
+            fi
+        fi
+        
+        print_success "Database file permissions and ownership set"
     else
         print_error "Database file not found after creation"
         exit 1
@@ -193,7 +210,38 @@ main() {
     
     print_success "Database setup complete"
     
-    print_header "Step 7: Start Services"
+    print_header "Step 7: Fix Permissions Before Service Start"
+    
+    # Ensure database is writable before starting service
+    print_info "Ensuring database is writable for the application..."
+    
+    # Set database file permissions
+    if [ -f "data/pim.db" ]; then
+        if ! chmod 666 data/pim.db 2>/dev/null; then
+            print_info "Using sudo to set database permissions..."
+            sudo chmod 666 data/pim.db
+        fi
+    fi
+    
+    # Set data directory permissions
+    if ! chmod 777 data 2>/dev/null; then
+        print_info "Using sudo to set data directory permissions..."
+        sudo chmod 777 data
+    fi
+    
+    # Set ownership to current user if not root
+    CURRENT_USER=$(whoami)
+    if [ "$CURRENT_USER" != "root" ]; then
+        print_info "Setting ownership to current user..."
+        if ! chown -R "$CURRENT_USER:$CURRENT_USER" data 2>/dev/null; then
+            print_info "Using sudo to set ownership..."
+            sudo chown -R "$CURRENT_USER:$CURRENT_USER" data
+        fi
+    fi
+    
+    print_success "Permissions fixed for service startup"
+    
+    print_header "Step 8: Start Services"
     
     # Start services
     print_info "Starting services..."
@@ -229,7 +277,7 @@ main() {
         sleep 5
     done
     
-    print_header "Step 8: Verify Admin Access"
+    print_header "Step 9: Verify Admin Access"
     
     # Test admin login
     print_info "Testing admin user access..."
