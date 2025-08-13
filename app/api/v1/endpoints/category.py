@@ -459,4 +459,64 @@ def edit_category_schema(
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to update category schema: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to update category schema: {str(e)}")
+
+@router.delete("/admin/{id}")
+def delete_category_admin(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete any category by ID (superadmin only).
+    This endpoint allows superadmin users to delete categories from any tenant.
+    
+    ⚠️  WARNING: This will permanently delete:
+    - Category and all its data
+    - All products in this category will have category_id set to NULL
+    """
+    # Only superadmin can delete any category
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only superadmin users can delete any category")
+    
+    # Find the category to delete
+    category = db.query(Category).filter(Category.id == id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    # Get category info for response
+    category_info = {
+        "id": category.id,
+        "name": category.name,
+        "description": category.description,
+        "tenant_id": category.tenant_id
+    }
+    
+    # Get tenant info if available
+    from app.models.tenant import Tenant
+    tenant = None
+    if category.tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == category.tenant_id).first()
+        if tenant:
+            category_info["tenant_name"] = tenant.company_name
+    
+    # Check if category has products
+    from app.models.product import Product
+    product_count = db.query(Product).filter(Product.category_id == id).count()
+    
+    if product_count > 0:
+        # Set category_id to NULL for all products in this category
+        db.query(Product).filter(Product.category_id == id).update({Product.category_id: None})
+        category_info["products_affected"] = product_count
+        category_info["action"] = "Products unlinked from category"
+    
+    # Delete the category
+    db.delete(category)
+    db.commit()
+    
+    return {
+        "message": f"Category '{category_info['name']}' deleted successfully",
+        "deleted_category": category_info,
+        "deleted_by": current_user.email,
+        "products_affected": product_count if product_count > 0 else 0
+    } 

@@ -272,4 +272,49 @@ def get_tenant_users(
             "role": user.role
         }
         for user in users
-    ] 
+    ]
+
+@router.delete("/{id}")
+def delete_tenant(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a tenant and all associated data.
+    Only superadmin users can delete tenants.
+    
+    ⚠️  WARNING: This will permanently delete:
+    - All users in the tenant
+    - All products in the tenant
+    - All categories in the tenant
+    - All progress data
+    - All field mappings and configurations
+    - All chat sessions
+    """
+    # Only superadmin can delete tenants
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only superadmin users can delete tenants")
+    
+    # Find the tenant
+    tenant = db.query(Tenant).filter(Tenant.id == id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Get tenant info for response
+    tenant_info = {
+        "id": tenant.id,
+        "company_name": tenant.company_name,
+        "logo_url": tenant.logo_url,
+        "created_at": tenant.created_at
+    }
+    
+    # Delete the tenant (cascade will handle related data)
+    db.delete(tenant)
+    db.commit()
+    
+    return {
+        "message": f"Tenant '{tenant_info['company_name']}' and all associated data deleted successfully",
+        "deleted_tenant": tenant_info,
+        "deleted_by": current_user.email
+    } 

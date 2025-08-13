@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Set, Optional
 import json
 from app.models.category import Category
 from app.models.misc import Favorite, CompareList
+from app.models.tenant import Tenant
 
 router = APIRouter()
 
@@ -2187,3 +2188,53 @@ def get_all_filters(
             for field, values in filters.items()
         }
     } 
+
+@router.delete("/admin/{id}")
+def delete_product_admin(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete any product by ID (superadmin only).
+    This endpoint allows superadmin users to delete products from any tenant.
+    
+    ⚠️  WARNING: This will permanently delete:
+    - Product and all its data
+    - All additional data fields
+    - All favorites and compare list entries
+    """
+    # Only superadmin can delete any product
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only superadmin users can delete any product")
+    
+    # Find the product to delete
+    product = db.query(Product).filter(Product.id == id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    # Get product info for response
+    product_info = {
+        "id": product.id,
+        "sku_id": product.sku_id,
+        "manufacturer": product.manufacturer,
+        "supplier": product.supplier,
+        "tenant_id": product.tenant_id
+    }
+    
+    # Get tenant info if available
+    tenant = None
+    if product.tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == product.tenant_id).first()
+        if tenant:
+            product_info["tenant_name"] = tenant.company_name
+    
+    # Delete the product (cascade will handle related data)
+    db.delete(product)
+    db.commit()
+    
+    return {
+        "message": f"Product '{product_info['sku_id']}' deleted successfully",
+        "deleted_product": product_info,
+        "deleted_by": current_user.email
+    }

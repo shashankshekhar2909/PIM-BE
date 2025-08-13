@@ -180,4 +180,50 @@ def change_user_password(
         "user_id": user.id,
         "email": user.email,
         "changed_by": current_user.email
+    }
+
+@router.delete("/{id}")
+def delete_user(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a user and all associated data.
+    Only superadmin users can delete users.
+    
+    ⚠️  WARNING: This will permanently delete:
+    - User account
+    - All audit logs created by the user
+    - All chat sessions by the user
+    """
+    # Only superadmin can delete users
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only superadmin users can delete users")
+    
+    # Prevent superadmin from deleting themselves
+    if current_user.id == id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    # Find the user to delete
+    user = db.query(User).filter(User.id == id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user info for response
+    user_info = {
+        "id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "tenant_id": user.tenant_id
+    }
+    
+    # Delete the user (cascade will handle related data)
+    db.delete(user)
+    db.commit()
+    
+    return {
+        "message": f"User '{user_info['email']}' and all associated data deleted successfully",
+        "deleted_user": user_info,
+        "deleted_by": current_user.email
     } 
