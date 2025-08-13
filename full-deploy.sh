@@ -94,7 +94,32 @@ print_info "Checking Docker environment..."
 print_info "Docker version: $(docker --version 2>/dev/null || echo 'Docker not found')"
 print_info "Docker Compose version: $(docker compose version 2>/dev/null || echo 'Docker Compose not found')"
 print_info "Current directory: $(pwd)"
+print_info "Script location: $(dirname "$0")"
 print_info "Docker Compose file: $(ls -la docker-compose.yml 2>/dev/null || echo 'docker-compose.yml not found')"
+
+# Find the correct path for create_production_db.py
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DB_SCRIPT_PATH="$SCRIPT_DIR/create_production_db.py"
+
+print_info "Looking for database script at: $DB_SCRIPT_PATH"
+if [ -f "$DB_SCRIPT_PATH" ]; then
+    print_success "Found database script: $DB_SCRIPT_PATH"
+else
+    print_warning "Database script not found at expected location"
+    print_info "Searching for create_production_db.py in current directory and subdirectories..."
+    
+    # Search for the script
+    FOUND_SCRIPT=$(find . -name "create_production_db.py" -type f 2>/dev/null | head -1)
+    if [ -n "$FOUND_SCRIPT" ]; then
+        DB_SCRIPT_PATH="$FOUND_SCRIPT"
+        print_success "Found database script at: $DB_SCRIPT_PATH"
+    else
+        print_error "Could not find create_production_db.py anywhere"
+        print_info "Available Python files:"
+        find . -name "*.py" -type f 2>/dev/null | head -10
+        exit 1
+    fi
+fi
 
 # First, ensure Docker is running and the service can be built
 if ! docker compose ps > /dev/null 2>&1; then
@@ -117,16 +142,25 @@ else
     # Check if we can run the script directly (fallback)
     if command -v python3 > /dev/null 2>&1; then
         print_info "Attempting to create database directly with Python..."
+        print_info "Using script: $DB_SCRIPT_PATH"
         
         # Ensure proper permissions before running
         chmod 666 data/pim.db 2>/dev/null || true
         chmod 755 data/ 2>/dev/null || true
         
-        if python3 create_production_db.py; then
+        # Change to the script directory to ensure proper execution
+        cd "$(dirname "$DB_SCRIPT_PATH")"
+        print_info "Changed to directory: $(pwd)"
+        
+        if python3 "$(basename "$DB_SCRIPT_PATH")"; then
             print_success "Production database created successfully using direct Python"
+            # Change back to original directory
+            cd "$SCRIPT_DIR"
         else
-            print_error "Both Docker and direct Python methods failed"
+            print_error "Direct Python execution failed"
             print_error "Please check your Python environment and try again"
+            # Change back to original directory
+            cd "$SCRIPT_DIR"
             exit 1
         fi
     else
