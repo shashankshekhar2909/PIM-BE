@@ -59,7 +59,27 @@ main() {
     fi
     print_success "Docker Compose found"
     
-    print_header "Step 2: Directory Setup"
+    print_header "Step 2: Git and File Setup"
+    
+    # Pull latest changes first
+    print_info "Pulling latest changes from git..."
+    if git pull origin main; then
+        print_success "Git pull completed"
+    else
+        print_warning "Git pull failed - continuing with current files"
+    fi
+    
+    # Move any existing database file from root to data directory
+    if [ -f "pim.db" ]; then
+        print_info "Moving existing database from root to data directory..."
+        if ! mv pim.db data/pim.db 2>/dev/null; then
+            print_info "Using sudo to move database..."
+            sudo mv pim.db data/pim.db 2>/dev/null || true
+        fi
+        print_success "Database file moved to data directory"
+    fi
+    
+    print_header "Step 3: Directory Setup"
     
     # Create required directories with proper permissions
     print_info "Setting up directories..."
@@ -82,26 +102,11 @@ main() {
         fi
     fi
     
-    # Set directory permissions
-    print_info "Setting directory permissions..."
+    # Set directory permissions - make them world writable for Docker
+    print_info "Setting directory permissions (world writable for Docker)..."
     if ! chmod 777 data backups 2>/dev/null; then
         print_info "Using sudo to set directory permissions..."
         sudo chmod 777 data backups
-    fi
-    
-    # Move any existing database file from root to data directory
-    if [ -f "pim.db" ]; then
-        print_info "Moving existing database from root to data directory..."
-        if ! mv pim.db data/pim.db 2>/dev/null; then
-            print_info "Using sudo to move database..."
-            sudo mv pim.db data/pim.db
-        fi
-    fi
-    
-    # Set ownership if running as root
-    if [ "$(id -u)" = "0" ]; then
-        print_info "Setting directory ownership..."
-        chown -R root:root data backups
     fi
     
     # Set database file permissions if it exists
@@ -115,14 +120,19 @@ main() {
     
     print_success "Directory setup complete"
     
-    print_header "Step 3: Docker Cleanup"
+    print_header "Step 4: Docker Cleanup"
     
     # Stop and remove existing containers
     print_info "Cleaning up existing containers..."
     docker-compose down 2>/dev/null || docker compose down 2>/dev/null || true
+    
+    # Clean up Docker system
+    print_info "Cleaning Docker system..."
+    docker system prune -f
+    
     print_success "Cleanup complete"
     
-    print_header "Step 4: Docker Build"
+    print_header "Step 5: Docker Build"
     
     # Build fresh Docker image
     print_info "Building Docker image..."
@@ -132,7 +142,7 @@ main() {
     fi
     print_success "Docker image built successfully"
     
-    print_header "Step 5: Database Setup"
+    print_header "Step 6: Database Setup"
     
     # Backup existing database if it exists
     if [ -f "data/pim.db" ]; then
@@ -145,23 +155,37 @@ main() {
         print_success "Database backed up to backups/pim.db.backup.${TIMESTAMP}"
     fi
     
-    # Create database using Docker
+    # Create database using Docker with proper user and volume mounting
     print_info "Creating database using Docker..."
-    if ! (docker-compose run --rm -v "$(pwd)/data:/app/data" pim python3 /app/create_production_db.py 2>/dev/null || \
-          docker compose run --rm -v "$(pwd)/data:/app/data" pim python3 /app/create_production_db.py); then
+    CURRENT_DIR=$(pwd)
+    if ! (docker-compose run --rm --user root -v "${CURRENT_DIR}/data:/app/data" pim python3 /app/create_production_db.py 2>/dev/null || \
+          docker compose run --rm --user root -v "${CURRENT_DIR}/data:/app/data" pim python3 /app/create_production_db.py); then
         print_error "Database creation failed"
-        print_info "Checking container logs..."
-        docker-compose logs 2>/dev/null || docker compose logs
-        exit 1
+        print_info "Trying alternative approach - creating database directly..."
+        
+        # Alternative: Create database file directly with correct permissions
+        print_info "Creating empty database file with proper permissions..."
+        touch data/pim.db
+        chmod 666 data/pim.db
+        
+        # Try Docker again
+        if ! (docker-compose run --rm --user root -v "${CURRENT_DIR}/data:/app/data" pim python3 /app/create_production_db.py 2>/dev/null || \
+              docker compose run --rm --user root -v "${CURRENT_DIR}/data:/app/data" pim python3 /app/create_production_db.py); then
+            print_error "Database creation still failed"
+            print_info "Checking container logs..."
+            docker-compose logs 2>/dev/null || docker compose logs
+            exit 1
+        fi
     fi
     
-    # Fix database file permissions
+    # Fix database file permissions after creation
     if [ -f "data/pim.db" ]; then
-        print_info "Setting database file permissions..."
+        print_info "Setting final database file permissions..."
         if ! chmod 666 data/pim.db 2>/dev/null; then
             print_info "Using sudo to set database permissions..."
             sudo chmod 666 data/pim.db
         fi
+        print_success "Database file permissions set"
     else
         print_error "Database file not found after creation"
         exit 1
@@ -169,7 +193,7 @@ main() {
     
     print_success "Database setup complete"
     
-    print_header "Step 6: Start Services"
+    print_header "Step 7: Start Services"
     
     # Start services
     print_info "Starting services..."
@@ -205,7 +229,7 @@ main() {
         sleep 5
     done
     
-    print_header "Step 7: Verify Admin Access"
+    print_header "Step 8: Verify Admin Access"
     
     # Test admin login
     print_info "Testing admin user access..."
