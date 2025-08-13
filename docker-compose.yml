@@ -31,10 +31,10 @@ services:
     restart: unless-stopped
 
   pim:
-    build: ./fastAPI/PIM-BE
+    build: .
     container_name: pim
     volumes:
-      - ./fastAPI/PIM-BE:/app
+      - .:/app
       - pim_db_data:/app/data
     working_dir: /app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
