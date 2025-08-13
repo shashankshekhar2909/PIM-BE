@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_db, get_current_user
 from app.models.user import User
@@ -19,28 +19,49 @@ router = APIRouter()
 
 @router.get("")
 def list_users(
+    page: int = Query(1, ge=1, description="Page number (starts from 1)"),
+    page_size: int = Query(100, ge=1, le=500, description="Number of items per page (max 500)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List all users in the current user's tenant."""
+    """List all users in the current user's tenant with pagination."""
+    # Calculate skip and limit
+    skip = (page - 1) * page_size
+    limit = page_size
+    
     # Handle superadmin and analyst users who can see all users
     if current_user.is_superadmin or current_user.is_analyst:
-        users = db.query(User).all()
+        total_count = db.query(User).count()
+        users = db.query(User).offset(skip).limit(limit).all()
     else:
         # Regular users can only see users in their own tenant
         if not current_user.tenant_id:
             raise HTTPException(status_code=404, detail="Tenant not found")
-        users = db.query(User).filter(User.tenant_id == current_user.tenant_id).all()
+        total_count = db.query(User).filter(User.tenant_id == current_user.tenant_id).count()
+        users = db.query(User).filter(User.tenant_id == current_user.tenant_id).offset(skip).limit(limit).all()
     
-    return [
-        {
-            "id": user.id,
-            "email": user.email,
-            "role": user.role,
-            "tenant_id": user.tenant_id
-        }
-        for user in users
-    ]
+    return {
+        "users": [
+            {
+                "id": user.id,
+                "email": user.email,
+                "role": user.role,
+                "tenant_id": user.tenant_id
+            }
+            for user in users
+        ],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "total_items": total_count,
+            "has_next": page * page_size < total_count,
+            "has_previous": page > 1,
+            "next_page": page + 1 if page * page_size < total_count else None,
+            "previous_page": page - 1 if page > 1 else None
+        },
+        "total_count": total_count
+    }
 
 @router.get("/{id}")
 def get_user(

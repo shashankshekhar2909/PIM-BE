@@ -278,8 +278,10 @@ async def upload_and_save_products(
 def list_products(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 100,
+    page: int = Query(1, ge=1, description="Page number (starts from 1)"),
+    page_size: int = Query(100, ge=1, le=500, description="Number of items per page (max 500)"),
+    skip: int = Query(None, description="Number of records to skip (deprecated, use page and page_size)"),
+    limit: int = Query(None, description="Maximum number of records to return (deprecated, use page and page_size)"),
     category_id: int = None,
     search: str = None,
     primary_only: bool = False,
@@ -302,8 +304,10 @@ def list_products(
     Supports pagination, category filtering, search, field type filtering, and field-specific search.
     
     Args:
-        skip: Number of records to skip
-        limit: Maximum number of records to return
+        page: Page number (starts from 1)
+        page_size: Number of items per page (max 500)
+        skip: Number of records to skip (deprecated, use page and page_size)
+        limit: Maximum number of records to return (deprecated, use page and page_size)
         category_id: Filter by category ID
         search: General search term (only searches in searchable fields)
         primary_only: If true, only return products with primary fields (deprecated, use field_type="primary")
@@ -319,6 +323,23 @@ def list_products(
         field_name: Search in specific additional data field
         field_value: Value to search for in the specified field (comma-separated values: "Value1,Value2")
     """
+    # Handle deprecated skip/limit parameters
+    if skip is not None or limit is not None:
+        # Calculate page and page_size from skip/limit for backward compatibility
+        if skip is not None and limit is not None:
+            page = (skip // limit) + 1
+            page_size = limit
+        elif skip is not None:
+            page = (skip // 100) + 1
+            page_size = 100
+        elif limit is not None:
+            page = 1
+            page_size = limit
+    
+    # Calculate actual skip and limit from page and page_size
+    actual_skip = (page - 1) * page_size
+    actual_limit = page_size
+    
     # Validate field_type parameter
     if field_type and field_type.lower() not in ["primary", "secondary", "all"]:
         raise HTTPException(
@@ -545,7 +566,7 @@ def list_products(
     
     # Apply pagination
     total_count = query.count()
-    products = query.offset(skip).limit(limit).all()
+    products = query.offset(actual_skip).limit(actual_limit).all()
     
     return {
         "products": [
@@ -561,17 +582,29 @@ def list_products(
             }
             for p in products
         ],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "total_items": total_count,
+            "has_next": page * page_size < total_count,
+            "has_previous": page > 1,
+            "next_page": page + 1 if page * page_size < total_count else None,
+            "previous_page": page - 1 if page > 1 else None
+        },
         "total_count": total_count,
-        "skip": skip,
-        "limit": limit,
+        "skip": actual_skip,
+        "limit": actual_limit,
         "field_type": field_type or ("primary" if primary_only else "secondary" if secondary_only else "all")
     }
 
 @router.get("/search")
 def search_products(
     q: Optional[str] = Query(None, alias="query", description="General search query across all searchable fields"),
-    skip: int = Query(0, description="Number of records to skip"),
-    limit: int = Query(100, description="Maximum number of records to return"),
+    page: int = Query(1, ge=1, description="Page number (starts from 1)"),
+    page_size: int = Query(100, ge=1, le=500, description="Number of items per page (max 500)"),
+    skip: int = Query(None, description="Number of records to skip (deprecated, use page and page_size)"),
+    limit: int = Query(None, description="Maximum number of records to return (deprecated, use page and page_size)"),
     category_id: Optional[int] = Query(None, description="Filter by category ID"),
     # Field-specific search parameters (support comma-separated values)
     sku_id: Optional[str] = Query(None, description="Search in SKU ID field (comma-separated values: 'SKU1,SKU2')"),
@@ -599,9 +632,27 @@ def search_products(
     - Dynamic field search (field_name + field_value)
     - Category filtering
     - Field type filtering (primary, secondary, all)
+    - Pagination with page and page_size parameters
     
     Only searches in fields marked as searchable in field configurations.
     """
+    # Handle deprecated skip/limit parameters
+    if skip is not None or limit is not None:
+        # Calculate page and page_size from skip/limit for backward compatibility
+        if skip is not None and limit is not None:
+            page = (skip // limit) + 1
+            page_size = limit
+        elif skip is not None:
+            page = (skip // 100) + 1
+            page_size = 100
+        elif limit is not None:
+            page = 1
+            page_size = limit
+    
+    # Calculate actual skip and limit from page and page_size
+    actual_skip = (page - 1) * page_size
+    actual_limit = page_size
+    
     query = db.query(Product).filter(Product.tenant_id == current_user.tenant_id)
     
     # Apply category filter
@@ -609,20 +660,11 @@ def search_products(
         query = query.filter(Product.category_id == category_id)
     
     # Get searchable field configurations
-    searchable_configs_query = db.query(FieldConfiguration).filter(
+    searchable_configs = db.query(FieldConfiguration).filter(
         FieldConfiguration.tenant_id == current_user.tenant_id,
         FieldConfiguration.is_searchable == True
-    )
+    ).all()
     
-    # Apply field type filter if specified
-    if field_type and field_type.lower() in ['primary', 'secondary', 'all']:
-        if field_type.lower() == 'primary':
-            searchable_configs_query = searchable_configs_query.filter(FieldConfiguration.is_primary == True)
-        elif field_type.lower() == 'secondary':
-            searchable_configs_query = searchable_configs_query.filter(FieldConfiguration.is_secondary == True)
-        # For 'all', no additional filter needed
-    
-    searchable_configs = searchable_configs_query.all()
     searchable_fields = [config.field_name for config in searchable_configs]
     
     # If no searchable fields configured and no search query provided, return empty results
@@ -630,8 +672,8 @@ def search_products(
         return {
             "products": [],
             "total_count": 0,
-            "skip": skip,
-            "limit": limit,
+            "skip": actual_skip,
+            "limit": actual_limit,
             "query": q,
             "searchable_fields": [],
             "field_filters": {},
@@ -783,6 +825,7 @@ def search_products(
     
     # Apply search conditions using AND logic for multiple filters
     if search_conditions:
+        from sqlalchemy import and_
         query = query.filter(and_(*search_conditions))
     else:
         # If no search conditions and no searchable fields, return empty results
@@ -790,11 +833,11 @@ def search_products(
             return {
                 "products": [],
                 "total_count": 0,
-                "skip": skip,
-                "limit": limit,
+                "skip": actual_skip,
+                "limit": actual_limit,
                 "query": q,
                 "searchable_fields": [],
-                "field_filters": field_filters,
+                "field_filters": {},
                 "message": "No searchable fields configured"
             }
         # If search conditions were provided but none matched, return empty results
@@ -802,8 +845,8 @@ def search_products(
             return {
                 "products": [],
                 "total_count": 0,
-                "skip": skip,
-                "limit": limit,
+                "skip": actual_skip,
+                "limit": actual_limit,
                 "query": q,
                 "searchable_fields": searchable_fields,
                 "field_filters": field_filters,
@@ -812,7 +855,7 @@ def search_products(
     
     # Apply pagination
     total_count = query.count()
-    products = query.offset(skip).limit(limit).all()
+    products = query.offset(actual_skip).limit(actual_limit).all()
     
     return {
         "products": [
@@ -828,9 +871,19 @@ def search_products(
             }
             for p in products
         ],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "total_items": total_count,
+            "has_next": page * page_size < total_count,
+            "has_previous": page > 1,
+            "next_page": page + 1 if page * page_size < total_count else None,
+            "previous_page": page - 1 if page > 1 else None
+        },
         "total_count": total_count,
-        "skip": skip,
-        "limit": limit,
+        "skip": actual_skip,
+        "limit": actual_limit,
         "query": q,
         "searchable_fields": searchable_fields,
         "field_filters": field_filters

@@ -54,21 +54,40 @@ def require_superadmin_or_analyst(current_user: User):
 
 @router.get("/users")
 def list_all_users(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    page: int = Query(1, ge=1, description="Page number (starts from 1)"),
+    page_size: int = Query(100, ge=1, le=1000, description="Number of items per page (max 1000)"),
+    skip: int = Query(None, description="Number of records to skip (deprecated, use page and page_size)"),
+    limit: int = Query(None, description="Maximum number of records to return (deprecated, use page and page_size)"),
     role: Optional[str] = Query(None),
     tenant_id: Optional[int] = Query(None),
     is_active: Optional[bool] = Query(None),
     is_blocked: Optional[bool] = Query(None),
-    search: Optional[str] = Query(None)
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    List all users (superadmin and analyst only).
+    List all users with pagination (superadmin and analyst only).
     Analysts can only view, superadmins can view and manage.
     """
     require_superadmin_or_analyst(current_user)
+    
+    # Handle deprecated skip/limit parameters
+    if skip is not None or limit is not None:
+        # Calculate page and page_size from skip/limit for backward compatibility
+        if skip is not None and limit is not None:
+            page = (skip // limit) + 1
+            page_size = limit
+        elif skip is not None:
+            page = (skip // 100) + 1
+            page_size = 100
+        elif limit is not None:
+            page = 1
+            page_size = limit
+    
+    # Calculate actual skip and limit from page and page_size
+    actual_skip = (page - 1) * page_size
+    actual_limit = page_size
     
     query = db.query(User)
     
@@ -95,15 +114,17 @@ def list_all_users(
     total_count = query.count()
     
     # Apply pagination
-    users = query.offset(skip).limit(limit).all()
+    users = query.offset(actual_skip).limit(actual_limit).all()
     
     # Log the action
     log_audit_action(
         db=db,
         user_id=current_user.id,
-        action="read",
+        action="list_users",
         resource_type="users",
-        details=f"Listed {len(users)} users (total: {total_count})"
+        details=f"Listed {len(users)} users (page {page}, page_size {page_size})",
+        ip_address=None,
+        user_agent=None
     )
     
     return {
@@ -117,16 +138,25 @@ def list_all_users(
                 "tenant_id": user.tenant_id,
                 "is_active": user.is_active,
                 "is_blocked": user.is_blocked,
-                "last_login": user.last_login,
                 "created_at": user.created_at,
-                "created_by": user.created_by,
-                "notes": user.notes
+                "last_login": user.last_login,
+                "audit_logs_count": len(user.audit_logs)
             }
             for user in users
         ],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "total_items": total_count,
+            "has_next": page * page_size < total_count,
+            "has_previous": page > 1,
+            "next_page": page + 1 if page * page_size < total_count else None,
+            "previous_page": page - 1 if page > 1 else None
+        },
         "total_count": total_count,
-        "skip": skip,
-        "limit": limit
+        "skip": actual_skip,
+        "limit": actual_limit
     }
 
 @router.get("/users/{user_id}")
@@ -625,18 +655,37 @@ def list_all_products(
 
 @router.get("/audit-logs")
 def get_audit_logs(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    page: int = Query(1, ge=1, description="Page number (starts from 1)"),
+    page_size: int = Query(100, ge=1, le=1000, description="Number of items per page (max 1000)"),
+    skip: int = Query(None, description="Number of records to skip (deprecated, use page and page_size)"),
+    limit: int = Query(None, description="Maximum number of records to return (deprecated, use page and page_size)"),
     user_id: Optional[int] = Query(None),
     action: Optional[str] = Query(None),
     resource_type: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None)
+    end_date: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Get audit logs (superadmin and analyst only)"""
+    """Get audit logs with pagination (superadmin and analyst only)"""
     require_superadmin_or_analyst(current_user)
+    
+    # Handle deprecated skip/limit parameters
+    if skip is not None or limit is not None:
+        # Calculate page and page_size from skip/limit for backward compatibility
+        if skip is not None and limit is not None:
+            page = (skip // limit) + 1
+            page_size = limit
+        elif skip is not None:
+            page = (skip // 100) + 1
+            page_size = 100
+        elif limit is not None:
+            page = 1
+            page_size = limit
+    
+    # Calculate actual skip and limit from page and page_size
+    actual_skip = (page - 1) * page_size
+    actual_limit = page_size
     
     query = db.query(AuditLog)
     
@@ -664,7 +713,7 @@ def get_audit_logs(
     query = query.order_by(desc(AuditLog.created_at))
     
     total_count = query.count()
-    audit_logs = query.offset(skip).limit(limit).all()
+    audit_logs = query.offset(actual_skip).limit(actual_limit).all()
     
     return {
         "audit_logs": [
@@ -684,9 +733,19 @@ def get_audit_logs(
             }
             for log in audit_logs
         ],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "total_items": total_count,
+            "has_next": page * page_size < total_count,
+            "has_previous": page > 1,
+            "next_page": page + 1 if page * page_size < total_count else None,
+            "previous_page": page - 1 if page > 1 else None
+        },
         "total_count": total_count,
-        "skip": skip,
-        "limit": limit
+        "skip": actual_skip,
+        "limit": actual_limit
     }
 
 # Dashboard Endpoints

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_db, get_current_user
 from app.models.tenant import Tenant
@@ -91,23 +91,45 @@ def create_tenant(
 
 @router.get("")
 def list_tenants(
+    page: int = Query(1, ge=1, description="Page number (starts from 1)"),
+    page_size: int = Query(100, ge=1, le=500, description="Number of items per page (max 500)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List all tenants (superadmin and analyst only)."""
+    """List all tenants with pagination (superadmin and analyst only)."""
     if not (current_user.is_superadmin or current_user.is_analyst):
         raise HTTPException(status_code=403, detail="Only superadmin or analyst users can list all tenants")
     
-    tenants = db.query(Tenant).all()
-    return [
-        {
-            "id": tenant.id,
-            "company_name": tenant.company_name,
-            "logo_url": tenant.logo_url,
-            "created_at": tenant.created_at
-        }
-        for tenant in tenants
-    ]
+    # Calculate skip and limit
+    skip = (page - 1) * page_size
+    limit = page_size
+    
+    # Get total count and paginated results
+    total_count = db.query(Tenant).count()
+    tenants = db.query(Tenant).offset(skip).limit(limit).all()
+    
+    return {
+        "tenants": [
+            {
+                "id": tenant.id,
+                "company_name": tenant.company_name,
+                "logo_url": tenant.logo_url,
+                "created_at": tenant.created_at
+            }
+            for tenant in tenants
+        ],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "total_items": total_count,
+            "has_next": page * page_size < total_count,
+            "has_previous": page > 1,
+            "next_page": page + 1 if page * page_size < total_count else None,
+            "previous_page": page - 1 if page > 1 else None
+        },
+        "total_count": total_count
+    }
 
 @router.get("/me")
 def get_current_tenant(
