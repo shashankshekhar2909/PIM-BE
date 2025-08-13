@@ -10,6 +10,61 @@ This document provides comprehensive API endpoint documentation for the Multi-Te
 
 ---
 
+## 📄 **Pagination System**
+
+### **Standard Pagination Parameters**
+All list endpoints now support comprehensive pagination with the following parameters:
+
+- **`page`**: Page number (starts from 1, default: 1)
+- **`page_size`**: Number of items per page (configurable limits, default: 100)
+
+### **Pagination Response Format**
+All paginated endpoints return a standardized response structure:
+
+```json
+{
+  "data": [...],  // Array of items for the current page
+  "pagination": {
+    "page": 1,                    // Current page number
+    "page_size": 100,             // Items per page
+    "total_pages": 5,             // Total number of pages
+    "total_items": 450,           // Total count of all items
+    "has_next": true,             // Whether next page exists
+    "has_previous": false,        // Whether previous page exists
+    "next_page": 2,               // Next page number (null if no next page)
+    "previous_page": null         // Previous page number (null if no previous page)
+  },
+  "total_count": 450              // Total count (for backward compatibility)
+}
+```
+
+### **Backward Compatibility**
+For existing integrations, the old `skip` and `limit` parameters are still supported but deprecated:
+- **`skip`**: Number of records to skip (deprecated, use `page` and `page_size`)
+- **`limit`**: Maximum number of records to return (deprecated, use `page_size`)
+
+### **Page Size Limits**
+Different endpoints have different maximum page size limits:
+- **Products**: Max 500 items per page
+- **Users**: Max 500 items per page  
+- **Tenants**: Max 500 items per page
+- **Audit Logs**: Max 1000 items per page
+- **Superadmin Users**: Max 1000 items per page
+
+### **Example Usage**
+```bash
+# Get first page with 50 items
+GET /api/v1/products?page=1&page_size=50
+
+# Get second page with 25 items
+GET /api/v1/products?page=2&page_size=25
+
+# Get third page with 100 items (default page_size)
+GET /api/v1/products?page=3
+```
+
+---
+
 ## 🔐 **Authentication Endpoints**
 
 ### **JWT-Based Authentication System**
@@ -211,6 +266,46 @@ The system uses a custom JWT (JSON Web Token) authentication system:
 }
 ```
 
+### **GET** `/tenants`
+**List all tenants with pagination (superadmin and analyst only)**
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query Parameters:**
+- `page`: Page number (starts from 1, default: 1)
+- `page_size`: Number of items per page (max 500, default: 100)
+
+**Response (200):**
+```json
+{
+  "tenants": [
+    {
+      "id": 1,
+      "company_name": "Company A Inc.",
+      "logo_url": "https://example.com/logo1.png",
+      "created_at": "2024-01-01T00:00:00"
+    },
+    {
+      "id": 2,
+      "company_name": "Company B Inc.",
+      "logo_url": null,
+      "created_at": "2024-01-02T00:00:00"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 1,
+    "total_items": 2,
+    "has_next": false,
+    "has_previous": false,
+    "next_page": null,
+    "previous_page": null
+  },
+  "total_count": 2
+}
+```
+
 ---
 
 ## 👥 **User Management**
@@ -306,6 +401,48 @@ The system uses a custom JWT (JSON Web Token) authentication system:
 }
 ```
 
+### **GET** `/users`
+**List all users in current tenant with pagination**
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query Parameters:**
+- `page`: Page number (starts from 1, default: 1)
+- `page_size`: Number of items per page (max 500, default: 100)
+
+**Response (200):**
+```json
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "user1@example.com",
+      "role": "tenant_admin",
+      "tenant_id": 1
+    },
+    {
+      "id": 2,
+      "email": "user2@example.com",
+      "role": "tenant_user",
+      "tenant_id": 1
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 1,
+    "total_items": 2,
+    "has_next": false,
+    "has_previous": false,
+    "next_page": null,
+    "previous_page": null
+  },
+  "total_count": 2
+}
+```
+
+**Note:** Superadmin and analyst users can see all users across all tenants.
+
 ---
 
 ## 🔍 **Search Endpoints**
@@ -343,28 +480,59 @@ The system uses a custom JWT (JSON Web Token) authentication system:
 
 ## 📊 **Product Management**
 
-### **GET** `/product`
-**Get all products for current tenant**
+### **GET** `/products`
+**Get all products for current tenant with pagination**
 
 **Headers:** `Authorization: Bearer <token>`
 
 **Query Parameters:**
-- `skip`: Number of items to skip (default: 0)
-- `limit`: Maximum items to return (default: 100)
+- `page`: Page number (starts from 1, default: 1)
+- `page_size`: Number of items per page (max 500, default: 100)
+- `skip`: Number of items to skip (deprecated, use page and page_size)
+- `limit`: Maximum items to return (deprecated, use page_size)
 - `category_id`: Filter by category ID (optional)
+- `search`: General search term (optional)
+- `field_type`: Filter by field type - "primary", "secondary", "all" (optional)
+- `sku_id`: Search in SKU ID field (comma-separated values supported)
+- `price`: Search by exact price
+- `price_min`: Minimum price filter
+- `price_max`: Maximum price filter
+- `manufacturer`: Search in manufacturer field (comma-separated values supported)
+- `supplier`: Search in supplier field (comma-separated values supported)
+- `brand`: Search in brand field (comma-separated values supported)
+- `field_name`: Search in specific additional data field
+- `field_value`: Value to search for in the specified field
 
 **Response (200):**
 ```json
-[
-  {
-    "id": 1,
-    "name": "Product Name",
-    "description": "Product description",
-    "price": 99.99,
-    "category_id": 1,
-    "tenant_id": 1
-  }
-]
+{
+  "products": [
+    {
+      "id": 1,
+      "sku_id": "SKU001",
+      "category_id": 1,
+      "price": 99.99,
+      "manufacturer": "Brand Name",
+      "supplier": "Supplier Name",
+      "image_url": "https://example.com/image.jpg",
+      "additional_data_count": 5
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 5,
+    "total_items": 450,
+    "has_next": true,
+    "has_previous": false,
+    "next_page": 2,
+    "previous_page": null
+  },
+  "total_count": 450,
+  "skip": 0,
+  "limit": 100,
+  "field_type": "all"
+}
 ```
 
 ### **POST** `/product`
@@ -489,21 +657,53 @@ The system uses a custom JWT (JSON Web Token) authentication system:
 ## 🔧 **System Administration**
 
 ### **GET** `/superadmin/users`
-**Get all users (superadmin only)**
+**Get all users with pagination (superadmin and analyst only)**
 
 **Headers:** `Authorization: Bearer <token>`
 
+**Query Parameters:**
+- `page`: Page number (starts from 1, default: 1)
+- `page_size`: Number of items per page (max 1000, default: 100)
+- `skip`: Number of records to skip (deprecated, use page and page_size)
+- `limit`: Maximum number of records to return (deprecated, use page_size)
+- `role`: Filter by user role (optional)
+- `tenant_id`: Filter by tenant ID (optional)
+- `is_active`: Filter by active status (optional)
+- `is_blocked`: Filter by blocked status (optional)
+- `search`: Search in email, first_name, last_name (optional)
+
 **Response (200):**
 ```json
-[
-  {
-    "id": 1,
-    "email": "admin@pim.com",
-    "role": "superadmin",
-    "is_active": true,
-    "tenant_id": null
-  }
-]
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "admin@pim.com",
+      "first_name": "Admin",
+      "last_name": "User",
+      "role": "superadmin",
+      "tenant_id": null,
+      "is_active": true,
+      "is_blocked": false,
+      "created_at": "2024-01-01T00:00:00",
+      "last_login": "2024-01-01T10:00:00",
+      "audit_logs_count": 15
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 1,
+    "total_items": 1,
+    "has_next": false,
+    "has_previous": false,
+    "next_page": null,
+    "previous_page": null
+  },
+  "total_count": 1,
+  "skip": 0,
+  "limit": 100
+}
 ```
 
 ### **POST** `/superadmin/users`
@@ -529,6 +729,57 @@ The system uses a custom JWT (JSON Web Token) authentication system:
   "role": "analyst",
   "is_active": true,
   "tenant_id": null
+}
+```
+
+### **GET** `/superadmin/audit-logs`
+**Get audit logs with pagination (superadmin and analyst only)**
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query Parameters:**
+- `page`: Page number (starts from 1, default: 1)
+- `page_size`: Number of items per page (max 1000, default: 100)
+- `skip`: Number of records to skip (deprecated, use page and page_size)
+- `limit`: Maximum number of records to return (deprecated, use page_size)
+- `user_id`: Filter by user ID (optional)
+- `action`: Filter by action type (optional)
+- `resource_type`: Filter by resource type (optional)
+- `start_date`: Filter by start date (ISO format, optional)
+- `end_date`: Filter by end date (ISO format, optional)
+
+**Response (200):**
+```json
+{
+  "audit_logs": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "user_email": "admin@pim.com",
+      "action": "login",
+      "resource_type": "auth",
+      "resource_id": null,
+      "resource_name": null,
+      "details": "User logged in successfully",
+      "ip_address": "192.168.1.1",
+      "user_agent": "Mozilla/5.0...",
+      "metadata": {"login_method": "password"},
+      "created_at": "2024-01-01T10:00:00"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 5,
+    "total_items": 450,
+    "has_next": true,
+    "has_previous": false,
+    "next_page": 2,
+    "previous_page": null
+  },
+  "total_count": 450,
+  "skip": 0,
+  "limit": 100
 }
 ```
 
@@ -562,111 +813,5 @@ DATABASE_URL=sqlite:///./data/pim.db
 ## 📝 **Error Handling**
 
 ### **Standard Error Response Format**
-```json
-{
-  "detail": "Error message description"
-}
 ```
-
-### **Common HTTP Status Codes**
-- **200**: Success
-- **400**: Bad Request (validation errors)
-- **401**: Unauthorized (missing or invalid token)
-- **403**: Forbidden (insufficient permissions)
-- **404**: Not Found
-- **500**: Internal Server Error
-
----
-
-## 🔒 **Security Notes**
-
-### **Token Management**
-- **Expiration**: Tokens expire after 30 minutes by default
-- **Refresh**: Use `/auth/refresh` to get new tokens
-- **Storage**: Store tokens securely (httpOnly cookies recommended)
-- **Transmission**: Always use HTTPS in production
-
-### **Password Requirements**
-- **Minimum Length**: 8 characters
-- **Hashing**: Bcrypt with salt
-- **Validation**: Server-side password strength validation
-
-### **Role-Based Access Control**
-- **Superadmin**: Full system access
-- **Analyst**: Read access to all data
-- **Tenant Admin**: Full access to tenant data
-- **Tenant User**: Limited access to tenant data
-
----
-
-## 📱 **Client Integration Examples**
-
-### **JavaScript/TypeScript**
-```typescript
-// Login
-const loginResponse = await fetch('/api/v1/auth/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: 'user@example.com',
-    password: 'password123'
-  })
-});
-
-const { access_token } = await loginResponse.json();
-
-// Use token for authenticated requests
-const userResponse = await fetch('/api/v1/auth/me', {
-  headers: { 'Authorization': `Bearer ${access_token}` }
-});
 ```
-
-### **Python**
-```python
-import requests
-
-# Login
-login_data = {
-    'email': 'user@example.com',
-    'password': 'password123'
-}
-login_response = requests.post('http://localhost:8000/api/v1/auth/login', json=login_data)
-access_token = login_response.json()['access_token']
-
-# Use token for authenticated requests
-headers = {'Authorization': f'Bearer {access_token}'}
-user_response = requests.get('http://localhost:8000/api/v1/auth/me', headers=headers)
-```
-
-### **cURL**
-```bash
-# Login
-curl -X POST "http://localhost:8000/api/v1/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"password123"}'
-
-# Use token
-curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  "http://localhost:8000/api/v1/auth/me"
-```
-
----
-
-## 📞 **Support & Troubleshooting**
-
-### **Common Issues**
-1. **Token Expired**: Use `/auth/refresh` to get new token
-2. **Invalid Credentials**: Check email/password combination
-3. **Permission Denied**: Verify user role and permissions
-4. **Database Errors**: Check database connection and schema
-
-### **Getting Help**
-- **Logs**: Check application logs for detailed error information
-- **Database**: Verify database file exists and is accessible
-- **Network**: Ensure proper port configuration and firewall settings
-
----
-
-**Last Updated**: January 2025  
-**Version**: 2.0 (JWT-based authentication)  
-**Maintainer**: PIM System Team 
