@@ -23,7 +23,7 @@ class User(Base):
 
     # Relationships with cascade
     tenant = relationship("Tenant", back_populates="users")
-    created_users = relationship("User", backref="creator", remote_side=[id], cascade="all, delete-orphan")
+    created_users = relationship("User", backref="creator", remote_side=[id])
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     
