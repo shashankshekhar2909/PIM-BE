@@ -138,7 +138,7 @@ def login(
                 "tenant": {
                     "id": str(tenant.id),
                     "name": tenant.company_name,
-                    "is_active": tenant.is_active
+                    "is_active": True
                 } if tenant else None
             }
         }
@@ -191,7 +191,7 @@ def me(
         "tenant": {
             "id": str(tenant.id),
             "name": tenant.company_name,
-            "is_active": tenant.is_active
+            "is_active": True
         } if tenant else None
     }
 
