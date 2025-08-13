@@ -30,7 +30,7 @@ def signup(
         tenant = Tenant(
             company_name=company_name,
             logo_url=None,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(datetime.timezone.utc)
         )
         db.add(tenant)
         db.flush()  # Get the tenant ID

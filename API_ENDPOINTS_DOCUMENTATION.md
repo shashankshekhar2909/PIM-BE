@@ -234,6 +234,50 @@ The system uses a custom JWT (JSON Web Token) authentication system:
 }
 ```
 
+### **POST** `/user/change-password`
+**Change current user's own password**
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request Body:**
+```json
+{
+  "current_password": "oldpassword123",  // Required: Current password
+  "new_password": "newpassword123"       // Required: New password (min 8 chars)
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Password changed successfully",
+  "user_id": 2,
+  "email": "user@example.com"
+}
+```
+
+### **POST** `/user/{id}/change-password`
+**Change any user's password (Superadmin only)**
+
+**Headers:** `Authorization: Bearer <token>` (Superadmin required)
+
+**Request Body:**
+```json
+{
+  "new_password": "newpassword123"       // Required: New password (min 8 chars)
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Password changed successfully for user user@example.com",
+  "user_id": 2,
+  "email": "user@example.com",
+  "changed_by": "admin@pim.com"
+}
+```
+
 ### **PUT** `/user/me`
 **Update current user profile**
 

@@ -84,6 +84,56 @@ const refreshToken = async () => {
     return null;
   }
 };
+
+### **4. Password Management**
+```typescript
+// Change own password
+const changePassword = async (currentPassword: string, newPassword: string) => {
+  const token = getToken();
+  if (!token) throw new Error('Authentication required');
+  
+  const response = await fetch('/api/v1/user/change-password', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` 
+    },
+    body: JSON.stringify({ 
+      current_password: currentPassword, 
+      new_password: newPassword 
+    })
+  });
+  
+  const data = await response.json();
+  if (response.ok) {
+    return data;
+  } else {
+    throw new Error(data.detail);
+  }
+};
+
+// Superadmin: Change any user's password
+const changeUserPassword = async (userId: number, newPassword: string) => {
+  const token = getToken();
+  if (!token) throw new Error('Authentication required');
+  
+  const response = await fetch(`/api/v1/user/${userId}/change-password`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` 
+    },
+    body: JSON.stringify({ new_password: newPassword })
+  });
+  
+  const data = await response.json();
+  if (response.ok) {
+    return data;
+  } else {
+    throw new Error(data.detail);
+  }
+};
+```
 ```
 
 ---
@@ -152,6 +202,25 @@ class APIClient {
   
   async getCurrentUser() {
     const response = await this.request('/auth/me');
+    return response.json();
+  }
+  
+  async changePassword(currentPassword: string, newPassword: string) {
+    const response = await this.request('/user/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        current_password: currentPassword, 
+        new_password: newPassword 
+      })
+    });
+    return response.json();
+  }
+  
+  async changeUserPassword(userId: number, newPassword: string) {
+    const response = await this.request(`/user/${userId}/change-password`, {
+      method: 'POST',
+      body: JSON.stringify({ new_password: newPassword })
+    });
     return response.json();
   }
   
