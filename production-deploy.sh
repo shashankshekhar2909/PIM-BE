@@ -71,6 +71,107 @@ main() {
         exit 1
     fi
     
+    # Check Python dependencies
+    print_info "Checking Python dependencies..."
+    MISSING_DEPS=()
+    
+    # Check for required packages
+    if ! python3 -c "import sqlalchemy" 2>/dev/null; then
+        MISSING_DEPS+=("sqlalchemy")
+    fi
+    
+    if ! python3 -c "import fastapi" 2>/dev/null; then
+        MISSING_DEPS+=("fastapi")
+    fi
+    
+    if ! python3 -c "import uvicorn" 2>/dev/null; then
+        MISSING_DEPS+=("uvicorn")
+    fi
+    
+    if ! python3 -c "import passlib" 2>/dev/null; then
+        MISSING_DEPS+=("passlib")
+    fi
+    
+    if ! python3 -c "import bcrypt" 2>/dev/null; then
+        MISSING_DEPS+=("bcrypt")
+    fi
+    
+    if ! python3 -c "import jose" 2>/dev/null; then
+        MISSING_DEPS+=("python-jose")
+    fi
+    
+    # Report missing dependencies
+    if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+        print_warning "Missing Python dependencies: ${MISSING_DEPS[*]}"
+        print_info "Attempting to install missing dependencies..."
+        
+        # Try to install using pip
+        if command -v pip3 > /dev/null 2>&1; then
+            print_info "Using pip3 to install dependencies..."
+            for dep in "${MISSING_DEPS[@]}"; do
+                print_info "Installing $dep..."
+                if pip3 install "$dep" --user; then
+                    print_success "Installed $dep"
+                else
+                    print_error "Failed to install $dep"
+                    print_info "Trying alternative installation methods..."
+                    
+                    # Try system package manager
+                    if command -v apt-get > /dev/null 2>&1; then
+                        print_info "Trying apt-get for $dep..."
+                        apt-get update && apt-get install -y "python3-$dep" 2>/dev/null || true
+                    elif command -v yum > /dev/null 2>&1; then
+                        print_info "Trying yum for $dep..."
+                        yum install -y "python3-$dep" 2>/dev/null || true
+                    fi
+                fi
+            done
+        else
+            print_error "pip3 not found, cannot install dependencies"
+            print_info "Please install the following packages manually:"
+            echo "  ${MISSING_DEPS[*]}"
+            print_info "Or use: pip3 install -r requirements.txt"
+            exit 1
+        fi
+        
+        # If individual installation failed, try requirements.txt
+        if [ ${#STILL_MISSING[@]} -gt 0 ]; then
+            print_warning "Individual package installation had issues, trying requirements.txt..."
+            if [ -f "requirements.txt" ]; then
+                print_info "Installing from requirements.txt..."
+                if pip3 install -r requirements.txt --user; then
+                    print_success "Installed dependencies from requirements.txt"
+                else
+                    print_error "Failed to install from requirements.txt"
+                    print_info "Please install dependencies manually or check your Python environment"
+                    exit 1
+                fi
+            else
+                print_error "requirements.txt not found"
+                print_info "Please install the following packages manually:"
+                echo "  ${MISSING_DEPS[*]}"
+                exit 1
+            fi
+        fi
+        
+        # Verify dependencies again
+        print_info "Verifying dependencies after installation..."
+        STILL_MISSING=()
+        for dep in "${MISSING_DEPS[@]}"; do
+            if ! python3 -c "import $dep" 2>/dev/null; then
+                STILL_MISSING+=("$dep")
+            fi
+        done
+        
+        if [ ${#STILL_MISSING[@]} -gt 0 ]; then
+            print_error "Still missing dependencies: ${STILL_MISSING[*]}"
+            print_info "Please install manually or check your Python environment"
+            exit 1
+        fi
+    else
+        print_success "All required Python dependencies are available"
+    fi
+    
     # Check Docker
     if command -v docker > /dev/null 2>&1; then
         print_success "Docker found: $(docker --version)"
