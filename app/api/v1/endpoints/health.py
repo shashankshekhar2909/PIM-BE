@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.core.dependencies import get_db, engine
 from app.core.config import settings
 import time
@@ -16,7 +17,7 @@ def check_database_health(db: Session) -> dict:
         start_time = time.time()
         
         # Test basic connectivity
-        result = db.execute("SELECT 1")
+        result = db.execute(text("SELECT 1"))
         result.fetchone()
         
         # Test database file existence and permissions
@@ -44,7 +45,7 @@ def check_database_health(db: Session) -> dict:
             db_details["file_permissions"] = oct(os.stat(db_path).st_mode)[-3:]
         
         # Test a simple query
-        result = db.execute("SELECT COUNT(*) FROM users")
+        result = db.execute(text("SELECT COUNT(*) FROM users"))
         user_count = result.fetchone()[0]
         db_details["user_count"] = user_count
         
