@@ -36,7 +36,20 @@ def create_production_database():
     # Remove existing database if it exists
     if db_path.exists():
         logger.info(f"Removing existing database: {db_path}")
-        db_path.unlink()
+        try:
+            db_path.unlink()
+            logger.info("✅ Existing database removed successfully")
+        except PermissionError:
+            logger.warning("⚠️  Cannot remove existing database due to permissions - will overwrite")
+            # Try to make the file writable
+            try:
+                os.chmod(db_path, 0o666)
+                logger.info("✅ Made existing database writable")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not change permissions: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not remove existing database: {e}")
+            logger.info("ℹ️  Will attempt to overwrite existing database")
     
     logger.info("Creating fresh production database...")
     

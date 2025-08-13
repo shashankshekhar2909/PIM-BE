@@ -61,12 +61,23 @@ print_info "Setting up production database..."
 mkdir -p data
 mkdir -p backups
 
+# Ensure proper permissions for Docker container
+print_info "Setting directory permissions for Docker container..."
+chmod 755 data backups
+chmod 666 data/pim.db 2>/dev/null || true
+print_success "Directory permissions set"
+
 # Check if database exists and create production version
 if [ -f "data/pim.db" ]; then
     print_info "Found existing database - creating backup..."
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     cp "data/pim.db" "backups/pim.db.backup.${TIMESTAMP}"
     print_success "Created backup: backups/pim.db.backup.${TIMESTAMP}"
+    
+    # Fix permissions to allow Docker container to modify the database
+    print_info "Fixing database permissions for Docker container..."
+    chmod 666 data/pim.db 2>/dev/null || true
+    print_success "Database permissions updated"
 fi
 
 print_header "Step 3: Build and Deploy"
