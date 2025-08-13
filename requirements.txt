@@ -12,3 +12,4 @@ python-dotenv
 requests
 pandas
 openpyxl 
+psycopg2-binary 

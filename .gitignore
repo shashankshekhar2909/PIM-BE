@@ -52,8 +52,8 @@ cover/
 # Django stuff:
 *.log
 local_settings.py
-db.sqlite3
-db.sqlite3-journal
+# db.sqlite3  # Commented out to allow database commits for production
+# db.sqlite3-journal  # Commented out to allow database commits for production
 
 # Flask stuff:
 instance/
@@ -151,10 +151,10 @@ Desktop.ini
 *~
 
 # Project specific
-*.db
-*.sqlite
-*.sqlite3
-pim.db
+# *.db  # Commented out to allow database commits for production
+# *.sqlite  # Commented out to allow database commits for production
+# *.sqlite3  # Commented out to allow database commits for production
+# pim.db  # Commented out to allow database commits for production
 *.log
 *.tmp
 *.bak

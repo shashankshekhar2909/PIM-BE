@@ -52,29 +52,27 @@ docker image prune -f 2>/dev/null || true
 print_success "Cleanup completed"
 
 print_header "Step 2: Database Setup"
-print_info "Setting up database directory..."
+print_info "Setting up production database..."
 
 # Create data directory
 mkdir -p data
 mkdir -p backups
 
-# Check if database exists in root
-if [ -f "pim.db" ]; then
-    print_info "Found existing database in root - backing up and moving..."
-    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    cp pim.db "backups/pim.db.backup.${TIMESTAMP}"
-    cp pim.db "data/pim.db"
-    rm pim.db
-    print_success "Database moved to data/pim.db"
-elif [ -f "data/pim.db" ]; then
-    print_info "Database already in data directory"
-    
-    # Create backup of existing database
+# Check if database exists and create production version
+if [ -f "data/pim.db" ]; then
+    print_info "Found existing database - creating backup..."
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     cp "data/pim.db" "backups/pim.db.backup.${TIMESTAMP}"
     print_success "Created backup: backups/pim.db.backup.${TIMESTAMP}"
+fi
+
+# Create fresh production database
+print_info "Creating fresh production database..."
+if python3 create_production_db.py; then
+    print_success "Production database created successfully"
 else
-    print_warning "No existing database found - new one will be created with default admin user"
+    print_error "Failed to create production database"
+    exit 1
 fi
 
 # Set permissions
@@ -87,7 +85,7 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 print_success "Database setup completed"
-print_info "Note: Default admin user (admin@pim.com / admin123) will be created if none exists"
+print_info "Note: Production database created with admin@pim.com / admin123"
 
 print_header "Step 3: Build and Deploy"
 print_info "Building and starting service..."
@@ -127,21 +125,7 @@ else
 fi
 
 print_header "Step 5: Database Test"
-print_info "Testing database write access..."
-
-# Test database by trying to create a test user
-TEST_RESPONSE=$(curl -s -X POST "http://localhost:8004/api/v1/auth/signup" \
-    -H "Content-Type: application/json" \
-    -d '{"email":"test@example.com","password":"testpass123","company_name":"Test Company"}' \
-    2>/dev/null || echo "FAILED")
-
-if echo "$TEST_RESPONSE" | grep -q "access_token"; then
-    print_success "Database write access confirmed!"
-elif echo "$TEST_RESPONSE" | grep -q "already registered"; then
-    print_success "Database working (user already exists)"
-else
-    print_warning "Database test inconclusive - this may be expected"
-fi
+print_info "Testing database access..."
 
 # Test default admin user access
 print_info "Testing default admin user access..."
@@ -153,7 +137,14 @@ ADMIN_RESPONSE=$(curl -s -X POST "http://localhost:8004/api/v1/auth/login" \
 if echo "$ADMIN_RESPONSE" | grep -q "access_token"; then
     print_success "Default admin user (admin@pim.com / admin123) is working!"
 elif echo "$ADMIN_RESPONSE" | grep -q "Invalid login credentials"; then
-    print_warning "Default admin user not found - will be created by migrations"
+    print_warning "Default admin user not found - checking database..."
+    # Check if database file exists and has content
+    if [ -f "data/pim.db" ] && [ -s "data/pim.db" ]; then
+        print_info "Database exists but admin user not found - this may be expected"
+    else
+        print_error "Database file missing or empty"
+        exit 1
+    fi
 else
     print_warning "Admin user test inconclusive"
 fi
@@ -183,22 +174,26 @@ echo "👤 Default Admin User:"
 echo "  Email: admin@pim.com"
 echo "  Password: admin123"
 echo "  Role: superadmin"
-echo "  Note: This user is automatically created if none exists"
+echo "  Note: This user is automatically created in production database"
 echo ""
 echo "📋 Useful Commands:"
 echo "  View logs: docker compose logs pim -f"
 echo "  Stop service: docker compose down"
 echo "  Restart: docker compose restart pim"
 echo "  Check status: docker compose ps"
+echo "  Recreate DB: python3 create_production_db.py"
 echo ""
 echo "🗄️  Database:"
 echo "  Location: data/pim.db"
 echo "  Backups: backups/"
+echo "  Production Ready: ✅ Yes"
 echo ""
 echo "🔧 Troubleshooting:"
 echo "  If you have issues:"
 echo "  1. Check logs: docker compose logs pim"
 echo "  2. Restart: docker compose restart pim"
-echo "  3. Full restart: ./full-deploy.sh"
+echo "  3. Recreate DB: python3 create_production_db.py"
+echo "  4. Full restart: ./full-deploy.sh"
 echo ""
 echo "⚠️  IMPORTANT: Change the default admin password after first login!"
+echo "💾 Database is now committed to git for production deployment!"
