@@ -20,6 +20,7 @@ def search_products(
     price_min: Optional[float] = Query(None, description="Minimum price filter"),
     price_max: Optional[float] = Query(None, description="Maximum price filter"),
     manufacturer: Optional[str] = Query(None, description="Search in manufacturer field (comma-separated values: 'Adidas,Apple,Bosch')"),
+    manufacturers: Optional[str] = Query(None, description="Alias for manufacturer parameter (comma-separated values: 'Adidas,Apple,Bosch')"),
     supplier: Optional[str] = Query(None, description="Search in supplier field (comma-separated values: 'Supplier1,Supplier2')"),
     brand: Optional[str] = Query(None, description="Search in brand field (comma-separated values: 'Brand1,Brand2')"),
     brands: Optional[str] = Query(None, description="Alias for brand parameter (comma-separated values: 'Brand1,Brand2')"),
@@ -68,7 +69,7 @@ def search_products(
     searchable_fields = [config.field_name for config in searchable_configs]
     
     # If no searchable fields configured and no search query provided, return empty results
-    if not searchable_fields and not any([q, sku_id, manufacturer, supplier, brand, brands, field_name, price, price_min, price_max]):
+    if not searchable_fields and not any([q, sku_id, manufacturer, manufacturers, supplier, brand, brands, field_name, price, price_min, price_max]):
         return {
             "products": [],
             "total_count": 0,
@@ -142,21 +143,22 @@ def search_products(
     
     # Brand search - support both 'brand' and 'brands' parameters
     brand_param = brand or brands
-    if brand_param and 'brand' in searchable_fields:
+    if brand_param:
         brand_values = split_comma_values(brand_param)
         if brand_values:
-            # First try to find brand in additional data
+            # First try to find brand in additional data if 'brand' is searchable
             brand_conditions = []
-            for brand_val in brand_values:
-                brand_query = db.query(ProductAdditionalData.product_id).filter(
-                    ProductAdditionalData.field_name == 'brand',
-                    ProductAdditionalData.field_value.ilike(f"%{brand_val}%")
-                ).distinct()
-                brand_product_ids = [row[0] for row in brand_query.all()]
-                if brand_product_ids:
-                    brand_conditions.extend(brand_product_ids)
+            if 'brand' in searchable_fields:
+                for brand_val in brand_values:
+                    brand_query = db.query(ProductAdditionalData.product_id).filter(
+                        ProductAdditionalData.field_name == 'brand',
+                        ProductAdditionalData.field_value.ilike(f"%{brand_val}%")
+                    ).distinct()
+                    brand_product_ids = [row[0] for row in brand_query.all()]
+                    if brand_product_ids:
+                        brand_conditions.extend(brand_product_ids)
             
-            # If no brands found in additional data, try manufacturer field
+            # Always try manufacturer field as fallback
             if not brand_conditions:
                 for brand_val in brand_values:
                     manufacturer_query = db.query(Product.id).filter(
@@ -169,6 +171,15 @@ def search_products(
             if brand_conditions:
                 search_conditions.append(Product.id.in_(brand_conditions))
             field_filters["brand"] = brand_values
+    
+    # Manufacturer search - support both 'manufacturer' and 'manufacturers' parameters
+    manufacturer_param = manufacturer or manufacturers
+    if manufacturer_param:
+        manufacturer_values = split_comma_values(manufacturer_param)
+        if manufacturer_values:
+            manufacturer_conditions = [Product.manufacturer.ilike(f"%{val}%") for val in manufacturer_values]
+            search_conditions.append(or_(*manufacturer_conditions))
+            field_filters["manufacturer"] = manufacturer_values
     
     # Dynamic field search - support multiple values
     if field_name and field_value and field_name in searchable_fields:
@@ -189,7 +200,7 @@ def search_products(
             field_filters[f"{field_name}"] = field_values
     
     # General search query (if no field-specific searches)
-    if q and not any([sku_id, manufacturer, supplier, brand, brands, field_name, price, price_min, price_max]):
+    if q and not any([sku_id, manufacturer, manufacturers, supplier, brand, brands, field_name, price, price_min, price_max]):
         search_term = f"%{q}%"
         
         # Search in standard fields if they're searchable
@@ -252,7 +263,7 @@ def search_products(
                 "message": "No searchable fields configured"
             }
         # If search conditions were provided but none matched, return empty results
-        elif any([q, sku_id, manufacturer, supplier, brand, brands, field_name, price, price_min, price_max]):
+        elif any([q, sku_id, manufacturer, manufacturers, supplier, brand, brands, field_name, price, price_min, price_max]):
             return {
                 "products": [],
                 "total_count": 0,
