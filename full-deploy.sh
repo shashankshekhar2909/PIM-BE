@@ -69,20 +69,15 @@ if [ -f "data/pim.db" ]; then
     print_success "Created backup: backups/pim.db.backup.${TIMESTAMP}"
 fi
 
-# Create fresh production database
-print_info "Creating fresh production database..."
-print_info "Script directory: ${SCRIPT_DIR}"
-print_info "Current working directory: $(pwd)"
-print_info "Looking for: ${SCRIPT_DIR}/create_production_db.py"
-if [ -f "${SCRIPT_DIR}/create_production_db.py" ]; then
-    print_info "Database script found"
-else
-    print_error "Database script not found at ${SCRIPT_DIR}/create_production_db.py"
-    ls -la "${SCRIPT_DIR}/"
-    exit 1
-fi
+print_header "Step 3: Build and Deploy"
+print_info "Building and starting service..."
 
-if python3 "${SCRIPT_DIR}/create_production_db.py"; then
+# Build with no cache to ensure fresh build
+docker compose build --no-cache pim
+
+print_info "Creating production database using Docker container..."
+# Create the database using the Docker container to ensure dependencies are available
+if docker compose run --rm pim python3 /app/create_production_db.py; then
     print_success "Production database created successfully"
 else
     print_error "Failed to create production database"
@@ -101,11 +96,7 @@ fi
 print_success "Database setup completed"
 print_info "Note: Production database created with admin@pim.com / admin123"
 
-print_header "Step 3: Build and Deploy"
-print_info "Building and starting service..."
-
-# Build with no cache to ensure fresh build
-docker compose build --no-cache pim
+print_info "Starting the service..."
 docker compose up -d pim
 
 print_info "Waiting for service to start..."
@@ -206,7 +197,7 @@ echo "🔧 Troubleshooting:"
 echo "  If you have issues:"
 echo "  1. Check logs: docker compose logs pim"
 echo "  2. Restart: docker compose restart pim"
-echo "  3. Recreate DB: python3 create_production_db.py"
+echo "  3. Recreate DB: docker compose run --rm pim python3 /app/create_production_db.py"
 echo "  4. Full restart: ./full-deploy.sh"
 echo ""
 echo "⚠️  IMPORTANT: Change the default admin password after first login!"
