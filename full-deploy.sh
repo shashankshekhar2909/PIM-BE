@@ -61,24 +61,40 @@ main() {
     
     print_header "Step 2: Directory Setup"
     
-    # Create required directories
+    # Create required directories with proper permissions
     print_info "Setting up directories..."
-    mkdir -p data backups
     
-    # Fix permissions - try with sudo if regular chmod fails
+    # Create data directory if it doesn't exist
+    if [ ! -d "data" ]; then
+        print_info "Creating data directory..."
+        if ! mkdir -p data; then
+            print_info "Using sudo to create data directory..."
+            sudo mkdir -p data
+        fi
+    fi
+    
+    # Create backups directory if it doesn't exist
+    if [ ! -d "backups" ]; then
+        print_info "Creating backups directory..."
+        if ! mkdir -p backups; then
+            print_info "Using sudo to create backups directory..."
+            sudo mkdir -p backups
+        fi
+    fi
+    
+    # Set directory permissions
     print_info "Setting directory permissions..."
     if ! chmod 777 data backups 2>/dev/null; then
-        print_info "Trying with sudo..."
+        print_info "Using sudo to set directory permissions..."
         sudo chmod 777 data backups
     fi
     
-    # Try to set file permissions if file exists
-    if [ -f "data/pim.db" ]; then
-        if ! chmod 666 data/pim.db 2>/dev/null; then
-            print_info "Trying with sudo..."
-            sudo chmod 666 data/pim.db
-        fi
+    # Set ownership if running as root
+    if [ "$(id -u)" = "0" ]; then
+        print_info "Setting directory ownership..."
+        chown -R root:root data backups
     fi
+    
     print_success "Directory setup complete"
     
     print_header "Step 3: Docker Cleanup"
@@ -100,6 +116,17 @@ main() {
     
     print_header "Step 5: Database Setup"
     
+    # Backup existing database if it exists
+    if [ -f "data/pim.db" ]; then
+        print_info "Backing up existing database..."
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        if ! cp data/pim.db "backups/pim.db.backup.${TIMESTAMP}" 2>/dev/null; then
+            print_info "Using sudo to create backup..."
+            sudo cp data/pim.db "backups/pim.db.backup.${TIMESTAMP}"
+        fi
+        print_success "Database backed up to backups/pim.db.backup.${TIMESTAMP}"
+    fi
+    
     # Create database using Docker
     print_info "Creating database using Docker..."
     if ! (docker-compose run --rm pim python3 /app/create_production_db.py 2>/dev/null || \
@@ -109,16 +136,20 @@ main() {
         docker-compose logs 2>/dev/null || docker compose logs
         exit 1
     fi
-    print_success "Database created successfully"
     
-    # Fix permissions again after database creation
+    # Fix database file permissions
     if [ -f "data/pim.db" ]; then
         print_info "Setting database file permissions..."
         if ! chmod 666 data/pim.db 2>/dev/null; then
-            print_info "Trying with sudo..."
+            print_info "Using sudo to set database permissions..."
             sudo chmod 666 data/pim.db
         fi
+    else
+        print_error "Database file not found after creation"
+        exit 1
     fi
+    
+    print_success "Database setup complete"
     
     print_header "Step 6: Start Services"
     

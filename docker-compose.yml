@@ -4,7 +4,7 @@ services:
     container_name: pim
     volumes:
       - .:/app
-      - pim_db_data:/app/data
+      - ./data:/app/data  # Changed this to bind mount
     working_dir: /app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
@@ -23,6 +23,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-volumes:
-  pim_db_data:
