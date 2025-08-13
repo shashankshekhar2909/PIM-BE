@@ -10,8 +10,13 @@ import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
-# Add the app directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Get the absolute path to the project root
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'app'))
 
 from app.core.dependencies import engine
 from app.models import *
@@ -20,28 +25,24 @@ from app.core.migrations import run_migrations
 from app.core.security import get_password_hash
 from sqlalchemy import text
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
 def create_production_database():
     """Create a fresh production database with admin user"""
     
-    # Ensure data directory exists
-    data_dir = Path("data")
-    data_dir.mkdir(exist_ok=True)
+    # Ensure data directory exists with absolute path
+    data_dir = os.path.join(PROJECT_ROOT, "data")
+    os.makedirs(data_dir, exist_ok=True)
     
-    db_path = data_dir / "pim.db"
+    db_path = os.path.join(data_dir, "pim.db")
+    logger.info(f"Using database path: {db_path}")
     
     # Remove existing database if it exists
-    if db_path.exists():
+    if os.path.exists(db_path):
         logger.info(f"Removing existing database: {db_path}")
         try:
-            db_path.unlink()
+            os.remove(db_path)
             logger.info("✅ Existing database removed successfully")
         except PermissionError:
             logger.warning("⚠️  Cannot remove existing database due to permissions - will overwrite")
-            # Try to make the file writable
             try:
                 os.chmod(db_path, 0o666)
                 logger.info("✅ Made existing database writable")
@@ -81,12 +82,19 @@ def create_production_database():
                 logger.warning("⚠️  No admin users found - creating default admin...")
                 create_default_admin(conn)
         
-        # Set proper permissions
-        os.chmod(db_path, 0o644)
-        logger.info(f"✅ Database created successfully: {db_path}")
-        logger.info(f"✅ Database size: {db_path.stat().st_size / 1024:.1f} KB")
-        
-        return True
+        # Ensure the database file exists and set permissions
+        if os.path.exists(db_path):
+            try:
+                os.chmod(db_path, 0o666)  # Make readable/writable by all
+                logger.info(f"✅ Database permissions set: {db_path}")
+                logger.info(f"✅ Database size: {os.path.getsize(db_path) / 1024:.1f} KB")
+                return True
+            except Exception as e:
+                logger.error(f"❌ Error setting database permissions: {e}")
+                return False
+        else:
+            logger.error(f"❌ Database file not found at: {db_path}")
+            return False
         
     except Exception as e:
         logger.error(f"❌ Error creating production database: {e}")
@@ -128,7 +136,8 @@ def main():
     if create_production_database():
         print("\n🎉 SUCCESS: Production database created!")
         print("\n📋 Database Details:")
-        print(f"   Location: data/pim.db")
+        db_path = os.path.join(PROJECT_ROOT, "data", "pim.db")
+        print(f"   Location: {db_path}")
         print(f"   Admin User: admin@pim.com")
         print(f"   Password: admin123")
         print(f"   Role: superadmin")
