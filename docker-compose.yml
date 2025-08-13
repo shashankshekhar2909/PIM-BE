@@ -1,35 +1,4 @@
 services:
-  app1:
-    build: ./fastAPI/app1
-    container_name: app1
-    volumes:
-      - ./fastAPI/app1:/app  # Mount your code
-    working_dir: /app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    ports:
-      - "8001:8000"
-
-  app2:
-    build: ./fastAPI/app2
-    container_name: app2
-    volumes:
-      - ./fastAPI/app2:/app
-    working_dir: /app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    ports:
-      - "8002:8000"
-
-  giftg:
-    build: ./fastAPI/giftg-BE
-    container_name: giftg
-    volumes:
-      - ./fastAPI/giftg-BE:/app
-    working_dir: /app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    ports:
-      - "8003:8000"
-    restart: unless-stopped
-
   pim:
     build: .
     container_name: pim
@@ -56,4 +25,4 @@ services:
       start_period: 40s
 
 volumes:
-  pim_db_data: 
+  pim_db_data:
