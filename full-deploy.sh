@@ -88,11 +88,52 @@ docker compose build --no-cache pim
 
 print_info "Creating production database using Docker container..."
 # Create the database using the Docker container to ensure dependencies are available
-if docker compose run --rm pim python3 /app/create_production_db.py; then
-    print_success "Production database created successfully"
-else
-    print_error "Failed to create production database"
+
+# Debug: Check Docker environment
+print_info "Checking Docker environment..."
+print_info "Docker version: $(docker --version 2>/dev/null || echo 'Docker not found')"
+print_info "Docker Compose version: $(docker compose version 2>/dev/null || echo 'Docker Compose not found')"
+print_info "Current directory: $(pwd)"
+print_info "Docker Compose file: $(ls -la docker-compose.yml 2>/dev/null || echo 'docker-compose.yml not found')"
+
+# First, ensure Docker is running and the service can be built
+if ! docker compose ps > /dev/null 2>&1; then
+    print_error "Docker Compose is not available or not running"
+    print_info "Please ensure Docker is running and try again"
     exit 1
+fi
+
+print_info "Docker Compose services:"
+docker compose ps 2>/dev/null || print_warning "Could not list Docker Compose services"
+
+print_info "Running: docker compose run --rm pim python3 /app/create_production_db.py"
+
+# Try to create the database using Docker
+if docker compose run --rm pim python3 /app/create_production_db.py; then
+    print_success "Production database created successfully using Docker"
+else
+    print_warning "Docker database creation failed, trying alternative approach..."
+    
+    # Check if we can run the script directly (fallback)
+    if command -v python3 > /dev/null 2>&1; then
+        print_info "Attempting to create database directly with Python..."
+        
+        # Ensure proper permissions before running
+        chmod 666 data/pim.db 2>/dev/null || true
+        chmod 755 data/ 2>/dev/null || true
+        
+        if python3 create_production_db.py; then
+            print_success "Production database created successfully using direct Python"
+        else
+            print_error "Both Docker and direct Python methods failed"
+            print_error "Please check your Python environment and try again"
+            exit 1
+        fi
+    else
+        print_error "Python3 is not available on the host system"
+        print_error "Cannot create database without Docker or Python"
+        exit 1
+    fi
 fi
 
 # Set permissions
