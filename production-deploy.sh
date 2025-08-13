@@ -127,11 +127,66 @@ main() {
                 fi
             done
         else
-            print_error "pip3 not found, cannot install dependencies"
-            print_info "Please install the following packages manually:"
-            echo "  ${MISSING_DEPS[*]}"
-            print_info "Or use: pip3 install -r requirements.txt"
-            exit 1
+            print_warning "pip3 not found, attempting to install it first..."
+            
+            # Try to install pip3
+            if command -v apt-get > /dev/null 2>&1; then
+                print_info "Installing pip3 using apt-get..."
+                apt-get update && apt-get install -y python3-pip
+            elif command -v yum > /dev/null 2>&1; then
+                print_info "Installing pip3 using yum..."
+                yum install -y python3-pip
+            elif command -v curl > /dev/null 2>&1; then
+                print_info "Installing pip3 using get-pip.py..."
+                curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+                python3 get-pip.py --user
+                rm get-pip.py
+            else
+                print_error "Cannot install pip3 automatically"
+                print_info "Please install pip3 manually first:"
+                print_info "  Ubuntu/Debian: apt-get install python3-pip"
+                print_info "  CentOS/RHEL: yum install python3-pip"
+                print_info "  Or download: https://bootstrap.pypa.io/get-pip.py"
+                exit 1
+            fi
+            
+            # Verify pip3 installation
+            if command -v pip3 > /dev/null 2>&1; then
+                print_success "pip3 installed successfully"
+                print_info "Now installing Python dependencies..."
+                
+                # Try to install dependencies using the newly installed pip3
+                for dep in "${MISSING_DEPS[@]}"; do
+                    print_info "Installing $dep..."
+                    if pip3 install "$dep" --user; then
+                        print_success "Installed $dep"
+                    else
+                        print_warning "Failed to install $dep with pip3, trying system packages..."
+                        
+                        # Try system package manager as fallback
+                        if command -v apt-get > /dev/null 2>&1; then
+                            print_info "Trying apt-get for $dep..."
+                            apt-get install -y "python3-$dep" 2>/dev/null || true
+                        elif command -v yum > /dev/null 2>&1; then
+                            print_info "Trying yum for $dep..."
+                            yum install -y "python3-$dep" 2>/dev/null || true
+                        fi
+                    fi
+                done
+            else
+                print_error "pip3 installation failed"
+                print_info "Trying to install dependencies using system packages only..."
+                
+                # Install dependencies using system packages only
+                for dep in "${MISSING_DEPS[@]}"; do
+                    print_info "Installing $dep using system package manager..."
+                    if command -v apt-get > /dev/null 2>&1; then
+                        apt-get update && apt-get install -y "python3-$dep" 2>/dev/null || true
+                    elif command -v yum > /dev/null 2>&1; then
+                        yum install -y "python3-$dep" 2>/dev/null || true
+                    fi
+                done
+            fi
         fi
         
         # If individual installation failed, try requirements.txt
