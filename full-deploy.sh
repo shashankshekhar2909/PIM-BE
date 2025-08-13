@@ -5,6 +5,9 @@
 
 set -e
 
+# Store the original script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -68,7 +71,18 @@ fi
 
 # Create fresh production database
 print_info "Creating fresh production database..."
-if python3 create_production_db.py; then
+print_info "Script directory: ${SCRIPT_DIR}"
+print_info "Current working directory: $(pwd)"
+print_info "Looking for: ${SCRIPT_DIR}/create_production_db.py"
+if [ -f "${SCRIPT_DIR}/create_production_db.py" ]; then
+    print_info "Database script found"
+else
+    print_error "Database script not found at ${SCRIPT_DIR}/create_production_db.py"
+    ls -la "${SCRIPT_DIR}/"
+    exit 1
+fi
+
+if python3 "${SCRIPT_DIR}/create_production_db.py"; then
     print_success "Production database created successfully"
 else
     print_error "Failed to create production database"

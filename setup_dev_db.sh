@@ -27,7 +27,7 @@ print_info "Setting up development database..."
 mkdir -p data
 
 # Create fresh development database
-if python3 create_production_db.py; then
+if python3 "$(dirname "$0")/create_production_db.py"; then
     print_success "Development database created successfully"
 else
     print_error "Failed to create development database"
