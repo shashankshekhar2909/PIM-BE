@@ -215,31 +215,35 @@ main() {
     # Ensure database is writable before starting service
     print_info "Ensuring database is writable for the application..."
     
-    # Set database file permissions
+    # Set database file permissions - make it world writable for Docker
     if [ -f "data/pim.db" ]; then
+        print_info "Setting database file permissions to world writable..."
         if ! chmod 666 data/pim.db 2>/dev/null; then
             print_info "Using sudo to set database permissions..."
             sudo chmod 666 data/pim.db
         fi
     fi
     
-    # Set data directory permissions
+    # Set data directory permissions - make it world writable for Docker
+    print_info "Setting data directory permissions to world writable..."
     if ! chmod 777 data 2>/dev/null; then
         print_info "Using sudo to set data directory permissions..."
         sudo chmod 777 data
     fi
     
-    # Set ownership to current user if not root
-    CURRENT_USER=$(whoami)
-    if [ "$CURRENT_USER" != "root" ]; then
-        print_info "Setting ownership to current user..."
-        if ! chown -R "$CURRENT_USER:$CURRENT_USER" data 2>/dev/null; then
-            print_info "Using sudo to set ownership..."
-            sudo chown -R "$CURRENT_USER:$CURRENT_USER" data
-        fi
+    # Set ownership to root (since Docker will run as root)
+    print_info "Setting ownership to root for Docker container..."
+    if ! chown root:root data/pim.db 2>/dev/null; then
+        print_info "Using sudo to set ownership to root..."
+        sudo chown root:root data/pim.db
     fi
     
-    print_success "Permissions fixed for service startup"
+    if ! chown root:root data 2>/dev/null; then
+        print_info "Using sudo to set data directory ownership to root..."
+        sudo chown root:root data
+    fi
+    
+    print_success "Permissions fixed for Docker container (root user)"
     
     print_header "Step 8: Start Services"
     

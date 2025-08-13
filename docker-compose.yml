@@ -2,9 +2,10 @@ services:
   pim:
     build: .
     container_name: pim
+    user: root  # Run as root to avoid permission issues
     volumes:
       - .:/app
-      - ${PWD}/data:/app/data  # Use absolute path
+      - ./data:/app/data  # Use relative path for better compatibility
     working_dir: /app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
