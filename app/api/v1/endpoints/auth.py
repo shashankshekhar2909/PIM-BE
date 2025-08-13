@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
-from app.core.dependencies import get_db, get_current_user, get_auth_service
+from app.core.dependencies import get_db, get_current_user
 from app.models.user import User
 from app.models.tenant import Tenant
-from app.core.auth_service import SupabaseAuthService
+from app.core.security import verify_password, create_access_token, get_password_hash
 from sqlalchemy.exc import IntegrityError
 import logging
 from typing import Optional
+from datetime import timedelta, datetime
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -15,77 +17,136 @@ def signup(
     email: str = Body(...),
     password: str = Body(...),
     company_name: str = Body(...),
-    db: Session = Depends(get_db),
-    auth_service: SupabaseAuthService = Depends(get_auth_service)
+    db: Session = Depends(get_db)
 ):
-    """Sign up a new user with email and password using Supabase."""
+    """Sign up a new user with email and password."""
     try:
-        result = auth_service.signup_with_email(email, password, company_name, db)
+        # Check if user already exists
+        existing_user = db.query(User).filter(User.email == email).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Create tenant first
+        tenant = Tenant(
+            company_name=company_name,
+            logo_url=None,
+            created_at=datetime.utcnow()
+        )
+        db.add(tenant)
+        db.flush()  # Get the tenant ID
+        
+        # Create user
+        user = User(
+            email=email,
+            password_hash=get_password_hash(password),
+            role="tenant_admin",
+            first_name="",
+            last_name="",
+            is_active=True,
+            is_blocked=False,
+            tenant_id=tenant.id
+        )
+        db.add(user)
+        db.commit()
+        
+        # Create access token
+        access_token = create_access_token(
+            data={"sub": str(user.id)},
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        
         return {
-            "msg": "Signup successful",
-            **result
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "name": f"{user.first_name} {user.last_name}".strip() or "User",
+                "role": user.role,
+                "isSetupComplete": True,
+                "companyId": str(tenant.id),
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_active": user.is_active,
+                "is_blocked": user.is_blocked,
+                "tenant_id": user.tenant_id,
+                "tenant": {
+                    "id": str(tenant.id),
+                    "name": tenant.company_name,
+                    "is_active": True
+                }
+            }
         }
     except HTTPException:
         raise
     except Exception as e:
         logging.error(f"Signup error: {str(e)}")
+        db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create user")
 
 @router.post("/login")
 def login(
     email: str = Body(...),
     password: str = Body(...),
-    db: Session = Depends(get_db),
-    auth_service: SupabaseAuthService = Depends(get_auth_service)
+    db: Session = Depends(get_db)
 ):
-    """Login user with email and password using Supabase."""
+    """Login user with email and password."""
     try:
-        result = auth_service.login_with_email(email, password, db)
-        return result
+        # Find user by email
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid login credentials")
+        
+        # Verify password
+        if not verify_password(password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid login credentials")
+        
+        # Check if user is active
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="User account is deactivated")
+        
+        # Check if user is blocked
+        if user.is_blocked:
+            raise HTTPException(status_code=403, detail="User account is blocked")
+        
+        # Get tenant information
+        tenant = None
+        if user.tenant_id:
+            tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+        
+        # Create access token
+        access_token = create_access_token(
+            data={"sub": str(user.id)},
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "name": f"{user.first_name} {user.last_name}".strip() or "User",
+                "role": user.role,
+                "isSetupComplete": True,
+                "companyId": str(tenant.id) if tenant else "",
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_active": user.is_active,
+                "is_blocked": user.is_blocked,
+                "tenant_id": user.tenant_id,
+                "tenant": {
+                    "id": str(tenant.id),
+                    "name": tenant.company_name,
+                    "is_active": tenant.is_active
+                } if tenant else None
+            }
+        }
     except HTTPException:
         raise
     except Exception as e:
         logging.error(f"Login error: {str(e)}")
         raise HTTPException(status_code=500, detail="Login failed")
-
-@router.post("/signup/social")
-def signup_social(
-    provider: str = Body(...),  # e.g., "google", "github", "facebook"
-    access_token: str = Body(...),
-    company_name: str = Body(...),
-    db: Session = Depends(get_db),
-    auth_service: SupabaseAuthService = Depends(get_auth_service)
-):
-    """Sign up a new user with social login using Supabase."""
-    try:
-        result = auth_service.signup_with_social(provider, access_token, company_name, db)
-        return {
-            "msg": "Social signup successful",
-            **result
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Social signup error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create user with social login")
-
-@router.post("/login/social")
-def login_social(
-    provider: str = Body(...),
-    access_token: str = Body(...),
-    db: Session = Depends(get_db),
-    auth_service: SupabaseAuthService = Depends(get_auth_service)
-):
-    """Login user with social login using Supabase."""
-    try:
-        # For social login, we'll use the same flow as signup but check if user exists
-        result = auth_service.signup_with_social(provider, access_token, "Temporary Company", db)
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Social login error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Social login failed")
 
 @router.get("/me")
 def me(
@@ -98,17 +159,19 @@ def me(
         return {
             "id": current_user.id,
             "email": current_user.email,
+            "name": f"{current_user.first_name} {current_user.last_name}".strip() or "User",
             "role": current_user.role,
-            "tenant": {
-                "id": None,
-                "company_name": "System Administration",
-                "logo_url": None,
-                "created_at": None
-            },
-            "is_system_user": True
+            "isSetupComplete": True,
+            "companyId": "",
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "is_active": current_user.is_active,
+            "is_blocked": current_user.is_blocked,
+            "tenant_id": current_user.tenant_id,
+            "tenant": None
         }
     
-    # Get tenant details for regular users
+    # Get tenant information for regular users
     tenant = None
     if current_user.tenant_id:
         tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
@@ -116,40 +179,39 @@ def me(
     return {
         "id": current_user.id,
         "email": current_user.email,
+        "name": f"{current_user.first_name} {current_user.last_name}".strip() or "User",
         "role": current_user.role,
+        "isSetupComplete": True,
+        "companyId": str(tenant.id) if tenant else "",
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "is_active": current_user.is_active,
+        "is_blocked": current_user.is_blocked,
+        "tenant_id": current_user.tenant_id,
         "tenant": {
-            "id": tenant.id,
-            "company_name": tenant.company_name,
-            "logo_url": tenant.logo_url,
-            "created_at": tenant.created_at
-        } if tenant else None,
-        "is_system_user": False
+            "id": str(tenant.id),
+            "name": tenant.company_name,
+            "is_active": tenant.is_active
+        } if tenant else None
     }
 
 @router.post("/logout")
 def logout():
     """Logout user (client-side token removal)."""
-    return {"msg": "Logout successful"}
+    return {"message": "Successfully logged out"}
 
-@router.get("/providers")
-def get_social_providers():
-    """Get available social login providers."""
+@router.post("/refresh")
+def refresh_token(
+    current_user: User = Depends(get_current_user)
+):
+    """Refresh access token."""
+    # Create new access token
+    access_token = create_access_token(
+        data={"sub": str(current_user.id)},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    
     return {
-        "providers": [
-            {
-                "name": "google",
-                "display_name": "Google",
-                "icon": "google"
-            },
-            {
-                "name": "github", 
-                "display_name": "GitHub",
-                "icon": "github"
-            },
-            {
-                "name": "facebook",
-                "display_name": "Facebook", 
-                "icon": "facebook"
-            }
-        ]
+        "access_token": access_token,
+        "token_type": "bearer"
     } 
