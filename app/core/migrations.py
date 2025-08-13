@@ -2,7 +2,7 @@ import logging
 from sqlalchemy import text, create_engine
 from app.core.config import settings
 from app.core.security import get_password_hash
-from datetime import datetime
+from datetime import datetime, timezone
 
 def run_migrations():
     """Run database migrations."""
@@ -182,7 +182,7 @@ def run_migrations():
                         image_url VARCHAR,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+                        FOREIGN KEY (tenant_id) REFERENCES categories (id),
                         FOREIGN KEY (category_id) REFERENCES categories (id)
                     )
                 """))
@@ -212,7 +212,7 @@ def run_migrations():
             if superadmin_count == 0:
                 # Create default superadmin
                 password_hash = get_password_hash("admin123")
-                current_time = datetime.utcnow().isoformat()
+                current_time = datetime.now(timezone.utc).isoformat()
                 
                 conn.execute(text("""
                     INSERT INTO users (
