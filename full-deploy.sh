@@ -89,10 +89,28 @@ main() {
         sudo chmod 777 data backups
     fi
     
+    # Move any existing database file from root to data directory
+    if [ -f "pim.db" ]; then
+        print_info "Moving existing database from root to data directory..."
+        if ! mv pim.db data/pim.db 2>/dev/null; then
+            print_info "Using sudo to move database..."
+            sudo mv pim.db data/pim.db
+        fi
+    fi
+    
     # Set ownership if running as root
     if [ "$(id -u)" = "0" ]; then
         print_info "Setting directory ownership..."
         chown -R root:root data backups
+    fi
+    
+    # Set database file permissions if it exists
+    if [ -f "data/pim.db" ]; then
+        print_info "Setting database file permissions..."
+        if ! chmod 666 data/pim.db 2>/dev/null; then
+            print_info "Using sudo to set database permissions..."
+            sudo chmod 666 data/pim.db
+        fi
     fi
     
     print_success "Directory setup complete"
@@ -129,8 +147,8 @@ main() {
     
     # Create database using Docker
     print_info "Creating database using Docker..."
-    if ! (docker-compose run --rm pim python3 /app/create_production_db.py 2>/dev/null || \
-          docker compose run --rm pim python3 /app/create_production_db.py); then
+    if ! (docker-compose run --rm -v "$(pwd)/data:/app/data" pim python3 /app/create_production_db.py 2>/dev/null || \
+          docker compose run --rm -v "$(pwd)/data:/app/data" pim python3 /app/create_production_db.py); then
         print_error "Database creation failed"
         print_info "Checking container logs..."
         docker-compose logs 2>/dev/null || docker compose logs
