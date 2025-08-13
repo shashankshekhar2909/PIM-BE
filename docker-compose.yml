@@ -4,7 +4,7 @@ services:
     container_name: pim
     volumes:
       - .:/app
-      - ./data:/app/data  # Changed this to bind mount
+      - ${PWD}/data:/app/data  # Use absolute path
     working_dir: /app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:

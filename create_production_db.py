@@ -25,12 +25,24 @@ from app.core.migrations import run_migrations
 from app.core.security import get_password_hash
 from sqlalchemy import text
 
+def ensure_directory_exists(path):
+    """Ensure directory exists and is writable"""
+    try:
+        os.makedirs(path, exist_ok=True)
+        os.chmod(path, 0o777)  # Make directory writable by all
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create/chmod directory {path}: {e}")
+        return False
+
 def create_production_database():
     """Create a fresh production database with admin user"""
     
     # Ensure data directory exists with absolute path
     data_dir = os.path.join(PROJECT_ROOT, "data")
-    os.makedirs(data_dir, exist_ok=True)
+    if not ensure_directory_exists(data_dir):
+        logger.error("Failed to create/setup data directory")
+        return False
     
     db_path = os.path.join(data_dir, "pim.db")
     logger.info(f"Using database path: {db_path}")
@@ -88,12 +100,26 @@ def create_production_database():
                 os.chmod(db_path, 0o666)  # Make readable/writable by all
                 logger.info(f"✅ Database permissions set: {db_path}")
                 logger.info(f"✅ Database size: {os.path.getsize(db_path) / 1024:.1f} KB")
+                
+                # Double-check the file is actually there and readable
+                with open(db_path, 'rb') as f:
+                    f.seek(0, 2)  # Seek to end
+                    size = f.tell()
+                    logger.info(f"✅ Verified database is readable, size: {size / 1024:.1f} KB")
+                
                 return True
             except Exception as e:
-                logger.error(f"❌ Error setting database permissions: {e}")
+                logger.error(f"❌ Error verifying database: {e}")
                 return False
         else:
             logger.error(f"❌ Database file not found at: {db_path}")
+            # List directory contents for debugging
+            try:
+                logger.info("Directory contents:")
+                for item in os.listdir(data_dir):
+                    logger.info(f"  - {item}")
+            except Exception as e:
+                logger.error(f"Could not list directory contents: {e}")
             return False
         
     except Exception as e:
