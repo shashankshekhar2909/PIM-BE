@@ -9,7 +9,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     supabase_user_id = Column(String, index=True, nullable=True)  # Supabase user ID
     password_hash = Column(String, nullable=True, default="")  # Made optional for Supabase auth
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)  # Nullable for superadmin/analyst
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True)  # Nullable for superadmin/analyst
     role = Column(String, nullable=False, default="tenant_user")  # superadmin, analyst, tenant_admin, tenant_user
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
@@ -18,13 +18,14 @@ class User(Base):
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Who created this user
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # Who created this user
     notes = Column(Text, nullable=True)  # Admin notes about the user
 
-    # Relationships
+    # Relationships with cascade
     tenant = relationship("Tenant", back_populates="users")
-    created_users = relationship("User", backref="creator", remote_side=[id])
-    audit_logs = relationship("AuditLog", back_populates="user")
+    created_users = relationship("User", backref="creator", remote_side=[id], cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     
     @property
     def full_name(self):

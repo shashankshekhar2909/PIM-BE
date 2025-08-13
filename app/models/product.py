@@ -6,8 +6,8 @@ from app.models.base import Base
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     sku_id = Column(String, nullable=False, index=True)
     price = Column(Float, nullable=True)
     manufacturer = Column(String, nullable=True)
@@ -16,13 +16,15 @@ class Product(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships with cascade
+    tenant = relationship("Tenant", back_populates="products")
     category = relationship("Category", back_populates="products")
     additional_data = relationship("ProductAdditionalData", back_populates="product", cascade="all, delete-orphan")
 
 class ProductAdditionalData(Base):
     __tablename__ = "product_additional_data"
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
     field_name = Column(String, nullable=False)  # Normalized field name (e.g., "brand", "warranty")
     field_label = Column(String, nullable=False)  # Human-readable label (e.g., "Brand Name", "Warranty Period")
     field_value = Column(String, nullable=True)   # The actual value
@@ -35,7 +37,7 @@ class ProductAdditionalData(Base):
 class FieldMapping(Base):
     __tablename__ = "field_mappings"
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     original_field_name = Column(String, nullable=False)  # Original field name from CSV
     normalized_field_name = Column(String, nullable=False)  # AI-normalized field name
     field_label = Column(String, nullable=False)  # Human-readable label
@@ -43,11 +45,14 @@ class FieldMapping(Base):
     is_standard_field = Column(Integer, default=0)  # 1 if it's a standard field (sku_id, price, etc.)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Add relationship
+    tenant = relationship("Tenant", back_populates="field_mappings")
 
 class FieldConfiguration(Base):
     __tablename__ = "field_configurations"
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     field_name = Column(String, nullable=False)  # Normalized field name (e.g., "brand", "warranty")
     field_label = Column(String, nullable=False)  # Human-readable label (e.g., "Brand Name", "Warranty Period")
     field_type = Column(String, nullable=False, default="string")  # string, number, boolean, date
@@ -62,4 +67,7 @@ class FieldConfiguration(Base):
     display_order = Column(Integer, default=0)  # Order for display
     description = Column(String, nullable=True)  # Field description
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) 
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Add relationship
+    tenant = relationship("Tenant", back_populates="field_configurations") 

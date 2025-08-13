@@ -72,21 +72,27 @@ def update_user_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update user role. Only admin users can update roles."""
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can update user roles")
+    """Update user role. Only superadmin users can update roles."""
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only superadmin users can update user roles")
     
     user = db.query(User).filter(User.id == id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if user.tenant_id != current_user.tenant_id:
+    # Superadmin can update any user's role
+    # Regular admin users can only update users in their own tenant
+    if not current_user.is_superadmin and user.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Validate role
-    valid_roles = ["admin", "editor", "viewer"]
+    valid_roles = ["superadmin", "analyst", "tenant_admin", "tenant_user"]
     if role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {valid_roles}")
+    
+    # Prevent superadmin from changing their own role
+    if current_user.id == id and role != "superadmin":
+        raise HTTPException(status_code=400, detail="Cannot change your own superadmin role")
     
     user.role = role
     db.commit()

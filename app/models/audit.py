@@ -6,7 +6,7 @@ from app.models.base import Base
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     action = Column(String, nullable=False)  # create, read, update, delete, login, logout, block, unblock
     resource_type = Column(String, nullable=False)  # user, tenant, product, category, etc.
     resource_id = Column(Integer, nullable=True)  # ID of the affected resource
@@ -17,7 +17,7 @@ class AuditLog(Base):
     audit_metadata = Column(JSON, nullable=True)  # Additional metadata as JSON (renamed from metadata)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
+    # Relationships with cascade
     user = relationship("User", back_populates="audit_logs")
     
     def __repr__(self):

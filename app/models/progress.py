@@ -22,7 +22,7 @@ class TenantProgress(Base):
     __tablename__ = "tenant_progress"
     
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     step_key = Column(String, nullable=False)
     is_completed = Column(Boolean, default=False)
     completed_at = Column(DateTime, nullable=True)
@@ -30,4 +30,5 @@ class TenantProgress(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relationship with cascade
     tenant = relationship("Tenant", back_populates="progress") 

@@ -10,5 +10,11 @@ class Tenant(Base):
     logo_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    users = relationship("User", back_populates="tenant")
-    progress = relationship("TenantProgress", back_populates="tenant") 
+    # Relationships with cascade - when tenant is deleted, all related data is removed
+    users = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
+    progress = relationship("TenantProgress", back_populates="tenant", cascade="all, delete-orphan")
+    products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
+    categories = relationship("Category", back_populates="tenant", cascade="all, delete-orphan")
+    field_mappings = relationship("FieldMapping", back_populates="tenant", cascade="all, delete-orphan")
+    field_configurations = relationship("FieldConfiguration", back_populates="tenant", cascade="all, delete-orphan")
+    chat_sessions = relationship("ChatSession", back_populates="tenant", cascade="all, delete-orphan") 

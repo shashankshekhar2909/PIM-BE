@@ -9,7 +9,21 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict
 
-engine = create_engine(settings.DATABASE_URL, connect_args={"check_same_thread": False})
+# Create engine with foreign key support enabled
+engine = create_engine(
+    settings.DATABASE_URL, 
+    connect_args={"check_same_thread": False}
+)
+
+# Enable foreign key support for SQLite
+if "sqlite" in settings.DATABASE_URL:
+    from sqlalchemy import event
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")

@@ -45,6 +45,12 @@ def create_production_database():
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created successfully")
         
+        # Enable foreign key support for SQLite
+        if "sqlite" in str(engine.url):
+            with engine.connect() as conn:
+                conn.execute(text("PRAGMA foreign_keys=ON"))
+                logger.info("✅ Foreign key support enabled")
+        
         # Run migrations
         run_migrations()
         logger.info("✅ Migrations completed successfully")
